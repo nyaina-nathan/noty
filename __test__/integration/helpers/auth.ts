@@ -1,4 +1,5 @@
 import { NextRequest } from "next/server";
+import type { ApiHandler } from "@/lib/api/handler";
 
 export const TEST_BASE_URL = "http://localhost:3000";
 
@@ -48,11 +49,12 @@ export function jsonRequest(
   });
 }
 
-export async function callRoute(
-  handler: RouteHandler,
+export async function callRoute<TContext = unknown>(
+  handler: ApiHandler<TContext>,
   request: NextRequest,
+  context?: TContext,
 ): Promise<Response> {
-  return handler(request, undefined);
+  return handler(request, context as TContext);
 }
 
 export function getCookie(
