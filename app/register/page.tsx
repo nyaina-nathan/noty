@@ -1,5 +1,7 @@
 import type { Metadata } from "next";
-import { AuthPlaceholder } from "@/components/auth-placeholder";
+import Link from "next/link";
+import { AuthForm } from "@/components/auth-form";
+import { AuthShell } from "@/components/auth-shell";
 
 export const metadata: Metadata = {
   title: "Create account — noty",
@@ -8,14 +10,23 @@ export const metadata: Metadata = {
 
 export default function RegisterPage() {
   return (
-    <AuthPlaceholder
-      eyebrow="Coming soon"
+    <AuthShell
+      eyebrow="Get started"
       title="Create your free account"
-      description="The sign-up screen is still being built. The account API is ready — this page is a placeholder until the form ships."
-      primaryHref="/login"
-      primaryLabel="Log in instead"
-      secondaryHref="/"
-      secondaryLabel="Back to home"
-    />
+      description="One account keeps your notes, projects, and tags together."
+      footer={
+        <>
+          Already have an account?{" "}
+          <Link
+            href="/login"
+            className="font-medium text-primary-strong underline underline-offset-4"
+          >
+            Log in
+          </Link>
+        </>
+      }
+    >
+      <AuthForm mode="register" />
+    </AuthShell>
   );
 }

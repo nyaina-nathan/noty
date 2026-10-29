@@ -1,25 +1,22 @@
+import type { ReactNode } from "react";
 import Link from "next/link";
 import { NotyLogo } from "@/components/noty-logo";
 
-type AuthPlaceholderProps = {
+type AuthShellProps = {
   eyebrow: string;
   title: string;
   description: string;
-  primaryHref: string;
-  primaryLabel: string;
-  secondaryHref: string;
-  secondaryLabel: string;
+  children?: ReactNode;
+  footer?: ReactNode;
 };
 
-export function AuthPlaceholder({
+export function AuthShell({
   eyebrow,
   title,
   description,
-  primaryHref,
-  primaryLabel,
-  secondaryHref,
-  secondaryLabel,
-}: AuthPlaceholderProps) {
+  children,
+  footer,
+}: AuthShellProps) {
   return (
     <main className="relative flex flex-1 flex-col">
       <div
@@ -55,14 +52,13 @@ export function AuthPlaceholder({
           </h1>
           <p className="mt-3 text-sm leading-6 text-muted">{description}</p>
 
-          <div className="mt-8 flex flex-col gap-3">
-            <Link href={primaryHref} className="btn btn-primary w-full">
-              {primaryLabel}
-            </Link>
-            <Link href={secondaryHref} className="btn btn-secondary w-full">
-              {secondaryLabel}
-            </Link>
-          </div>
+          {children ? <div className="mt-8">{children}</div> : null}
+
+          {footer ? (
+            <div className="mt-8 border-t border-line pt-6 text-center text-sm text-muted">
+              {footer}
+            </div>
+          ) : null}
         </div>
       </div>
     </main>

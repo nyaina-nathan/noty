@@ -1,21 +1,32 @@
 import type { Metadata } from "next";
-import { AuthPlaceholder } from "@/components/auth-placeholder";
+import Link from "next/link";
+import { AuthForm } from "@/components/auth-form";
+import { AuthShell } from "@/components/auth-shell";
 
 export const metadata: Metadata = {
   title: "Log in — noty",
-  description: "Sign in to noty.",
+  description: "Log in to your noty account.",
 };
 
 export default function LoginPage() {
   return (
-    <AuthPlaceholder
-      eyebrow="Coming soon"
+    <AuthShell
+      eyebrow="Welcome back"
       title="Log in"
-      description="The sign-in screen is still being built. The account API is ready — this page is a placeholder until the form ships."
-      primaryHref="/register"
-      primaryLabel="Create an account"
-      secondaryHref="/"
-      secondaryLabel="Back to home"
-    />
+      description="Pick up where you left off. Use your username or email."
+      footer={
+        <>
+          New to noty?{" "}
+          <Link
+            href="/register"
+            className="font-medium text-primary-strong underline underline-offset-4"
+          >
+            Create an account
+          </Link>
+        </>
+      }
+    >
+      <AuthForm mode="login" />
+    </AuthShell>
   );
 }
