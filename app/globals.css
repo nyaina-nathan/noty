@@ -1,1 +1,82 @@
 @import "tailwindcss";
+
+@theme {
+  --font-sans: var(--font-roboto), ui-sans-serif, system-ui, -apple-system,
+    "Segoe UI", sans-serif;
+  --font-display: var(--font-poppins), var(--font-roboto), ui-sans-serif,
+    system-ui, sans-serif;
+  --font-mono: var(--font-inconsolata), ui-monospace, SFMono-Regular, Menlo,
+    monospace;
+
+  --color-primary: #3b82f6;
+  --color-primary-strong: #2563eb;
+  --color-primary-deep: #1d4ed8;
+  --color-secondary: #8b5cf6;
+  --color-success: #16a34a;
+  --color-warning: #d97706;
+  --color-danger: #dc2626;
+  --color-surface: #ffffff;
+  --color-ink: #111827;
+  --color-muted: #4b5563;
+  --color-line: #e5e7eb;
+  --color-mist: #f8fafc;
+}
+
+@layer base {
+  html {
+    scroll-behavior: smooth;
+  }
+
+  body {
+    @apply bg-surface font-sans text-ink;
+  }
+
+  ::selection {
+    @apply bg-primary/15 text-ink;
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--color-primary);
+    outline-offset: 3px;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    html {
+      scroll-behavior: auto;
+    }
+
+    *,
+    ::before,
+    ::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+    }
+  }
+}
+
+@layer components {
+  .eyebrow {
+    @apply font-mono text-xs font-semibold uppercase tracking-[0.18em] text-primary-strong;
+  }
+
+  .btn {
+    @apply inline-flex min-h-11 items-center justify-center gap-2 rounded-lg px-5 text-sm font-medium transition-colors duration-200;
+  }
+
+  .btn-primary {
+    @apply bg-primary-strong text-white shadow-sm hover:bg-primary-deep active:bg-primary-deep;
+  }
+
+  .btn-secondary {
+    @apply border border-line bg-surface text-ink hover:bg-mist;
+  }
+
+  .btn-light {
+    @apply bg-surface text-ink hover:bg-mist;
+  }
+
+  .chip {
+    @apply inline-flex items-center rounded-md bg-primary/10 px-2 py-0.5 font-mono text-[11px] font-medium text-primary-strong;
+  }
+}
