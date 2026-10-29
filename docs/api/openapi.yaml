@@ -1,0 +1,1263 @@
+openapi: 3.0.3
+info:
+  title: Noty API
+  version: 1.0.0
+  description: |
+    REST API for Noty, a notes-and-projects application.
+
+    ## Authentication
+    Authentication is cookie based. A successful register or login sets two
+    `HttpOnly` cookies:
+
+    - `access_token` — signed JWT valid for 15 minutes, sent on every request
+      (`Path=/`). The `sub` claim is the user id.
+    - `refresh_token` — opaque random token valid for 30 days
+      (`Path=/api/auth`). Only its SHA-256 hash is stored in `refresh_tokens`.
+
+    `POST /auth/refresh` rotates the refresh token: the current token is
+    revoked and a new one is issued. `POST /auth/logout` revokes the current
+    refresh token and clears both cookies.
+
+    Cookies use `SameSite=Lax`, `HttpOnly`, and `Secure` in production. Unsafe
+    requests from other origins are rejected, which is the CSRF mitigation;
+    no CSRF header is required.
+
+    ## Authorization
+    Every resource is scoped to the authenticated user. A resource that exists
+    but belongs to another user responds with `404 NOT_FOUND` rather than
+    `403` to avoid leaking its existence.
+
+    ## Pagination
+    Endpoints that return a paginated collection return:
+
+    ```json
+    {
+      "items": [],
+      "meta": { "page": 1, "perPage": 20, "total": 0, "totalPage": 0 }
+    }
+    ```
+
+    `page` defaults to `1`, `perPage` defaults to `20` and is capped at `100`.
+    `totalPage` is `ceil(total / perPage)` and is `0` when there are no items.
+    The note sections endpoints are unpaginated and return a bare array of
+    sections ordered by `note_order`.
+
+    ## Errors
+    Errors share one envelope:
+
+    ```json
+    { "error": { "code": "VALIDATION_ERROR", "message": "Invalid input", "details": [] } }
+    ```
+servers:
+  - url: http://localhost:3000/api
+    description: Local development
+tags:
+  - name: Auth
+    description: Registration, sessions, and the current user.
+  - name: Tags
+    description: User-owned labels that can be attached to projects.
+  - name: Projects
+    description: Containers for notes, optionally linked to one tag.
+  - name: Notes
+    description: Notes, optionally attached to a project.
+  - name: Note Sections
+    description: Ordered content blocks that make up a note.
+security:
+  - cookieAuth: []
+paths:
+  /auth/register:
+    post:
+      tags: [Auth]
+      operationId: register
+      summary: Register a user
+      description: |
+        Creates a user and signs them in by setting the `access_token` and
+        `refresh_token` cookies.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RegisterRequest'
+      responses:
+        '201':
+          description: User created and signed in. Auth cookies are set.
+          headers:
+            Set-Cookie:
+              description: |
+                Two `HttpOnly` cookies are set: `access_token`
+                (15 minutes, `Path=/`) and `refresh_token`
+                (30 days, `Path=/api/auth`).
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+  /auth/login:
+    post:
+      tags: [Auth]
+      operationId: login
+      summary: Sign in
+      description: |
+        Authenticates with either username or email and signs the user in by
+        setting the `access_token` and `refresh_token` cookies.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+      responses:
+        '200':
+          description: Signed in. Auth cookies are set.
+          headers:
+            Set-Cookie:
+              description: |
+                Two `HttpOnly` cookies are set: `access_token`
+                (15 minutes, `Path=/`) and `refresh_token`
+                (30 days, `Path=/api/auth`).
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+  /auth/refresh:
+    post:
+      tags: [Auth]
+      operationId: refreshSession
+      summary: Rotate the session
+      description: |
+        Revokes the refresh token supplied in the `refresh_token` cookie and
+        issues a new access token and refresh token. The old refresh token is
+        marked with `revoked_at` and can no longer be used.
+      security:
+        - refreshCookie: []
+      responses:
+        '204':
+          description: Session refreshed. New auth cookies are set.
+          headers:
+            Set-Cookie:
+              description: |
+                Rotated `access_token` and `refresh_token` cookies.
+              schema:
+                type: string
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  /auth/logout:
+    post:
+      tags: [Auth]
+      operationId: logout
+      summary: Sign out
+      description: |
+        Revokes the current refresh token and clears both auth cookies. The
+        endpoint is idempotent and returns `204` even when no valid session is
+        present.
+      security:
+        - refreshCookie: []
+        - cookieAuth: []
+      responses:
+        '204':
+          description: Signed out. Auth cookies are cleared.
+          headers:
+            Set-Cookie:
+              description: Expired `access_token` and `refresh_token` cookies.
+              schema:
+                type: string
+  /auth/me:
+    get:
+      tags: [Auth]
+      operationId: getCurrentUser
+      summary: Get the current user
+      responses:
+        '200':
+          description: The authenticated user.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    patch:
+      tags: [Auth]
+      operationId: updateCurrentUser
+      summary: Update the current user
+      description: Updates the username and/or email. Omitted fields are unchanged.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateMeRequest'
+      responses:
+        '200':
+          description: Updated user.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+  /auth/change-password:
+    post:
+      tags: [Auth]
+      operationId: changePassword
+      summary: Change the current user's password
+      description: |
+        Verifies the current password, stores the new password hash, and
+        revokes every other active refresh token. The current session remains
+        valid.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ChangePasswordRequest'
+      responses:
+        '204':
+          description: Password changed.
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+  /tags:
+    get:
+      tags: [Tags]
+      operationId: listTags
+      summary: List tags
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PerPage'
+        - $ref: '#/components/parameters/Search'
+        - name: sort
+          in: query
+          description: Field to sort by.
+          schema:
+            type: string
+            enum: [name]
+            default: name
+        - $ref: '#/components/parameters/Order'
+      responses:
+        '200':
+          description: A page of tags.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TagList'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    post:
+      tags: [Tags]
+      operationId: createTag
+      summary: Create a tag
+      description: Tag names are not required to be unique per user.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateTagRequest'
+      responses:
+        '201':
+          description: Tag created.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Tag'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+  /tags/{tagId}:
+    get:
+      tags: [Tags]
+      operationId: getTag
+      summary: Get a tag
+      parameters:
+        - $ref: '#/components/parameters/TagIdPath'
+      responses:
+        '200':
+          description: The tag.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Tag'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    patch:
+      tags: [Tags]
+      operationId: updateTag
+      summary: Update a tag
+      parameters:
+        - $ref: '#/components/parameters/TagIdPath'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateTagRequest'
+      responses:
+        '200':
+          description: Updated tag.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Tag'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+    delete:
+      tags: [Tags]
+      operationId: deleteTag
+      summary: Delete a tag
+      description: |
+        Deletes the tag. Projects that referenced it remain and have
+        `tag_id` set to `null`.
+      parameters:
+        - $ref: '#/components/parameters/TagIdPath'
+      responses:
+        '204':
+          description: Tag deleted.
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /projects:
+    get:
+      tags: [Projects]
+      operationId: listProjects
+      summary: List projects
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PerPage'
+        - $ref: '#/components/parameters/Search'
+        - name: tag_id
+          in: query
+          description: Only return projects linked to this tag.
+          schema:
+            type: string
+            format: uuid
+        - name: sort
+          in: query
+          description: Field to sort by.
+          schema:
+            type: string
+            enum: [title]
+            default: title
+        - $ref: '#/components/parameters/Order'
+      responses:
+        '200':
+          description: A page of projects.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProjectList'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+    post:
+      tags: [Projects]
+      operationId: createProject
+      summary: Create a project
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateProjectRequest'
+      responses:
+        '201':
+          description: Project created.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Project'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+  /projects/{projectId}:
+    get:
+      tags: [Projects]
+      operationId: getProject
+      summary: Get a project
+      parameters:
+        - $ref: '#/components/parameters/ProjectIdPath'
+      responses:
+        '200':
+          description: The project.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Project'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    patch:
+      tags: [Projects]
+      operationId: updateProject
+      summary: Update a project
+      description: |
+        Omitted fields are unchanged. Send `tag_id: null` to detach the tag and
+        `description: null` to clear the description.
+      parameters:
+        - $ref: '#/components/parameters/ProjectIdPath'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateProjectRequest'
+      responses:
+        '200':
+          description: Updated project.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Project'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+    delete:
+      tags: [Projects]
+      operationId: deleteProject
+      summary: Delete a project
+      description: |
+        Deletes the project. Notes that referenced it remain and have
+        `project_id` set to `null`.
+      parameters:
+        - $ref: '#/components/parameters/ProjectIdPath'
+      responses:
+        '204':
+          description: Project deleted.
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /notes:
+    get:
+      tags: [Notes]
+      operationId: listNotes
+      summary: List notes
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PerPage'
+        - $ref: '#/components/parameters/Search'
+        - name: project_id
+          in: query
+          description: Only return notes attached to this project.
+          schema:
+            type: string
+            format: uuid
+        - name: tag_id
+          in: query
+          description: |
+            Only return notes whose project is linked to this tag. Notes
+            without a project are excluded.
+          schema:
+            type: string
+            format: uuid
+        - name: sort
+          in: query
+          description: Field to sort by.
+          schema:
+            type: string
+            enum: [created_at, updated_at, title]
+            default: created_at
+        - name: order
+          in: query
+          description: Sort direction.
+          schema:
+            type: string
+            enum: [asc, desc]
+            default: desc
+      responses:
+        '200':
+          description: A page of notes. Sections are not included.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NoteList'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+    post:
+      tags: [Notes]
+      operationId: createNote
+      summary: Create a note
+      description: |
+        Creates a note and, when `sections` is provided, its sections in the
+        same transaction. Omitted `note_order` values are assigned
+        sequentially starting at `1`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateNoteRequest'
+      responses:
+        '201':
+          description: Note created, including its sections.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NoteDetail'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+  /notes/{noteId}:
+    get:
+      tags: [Notes]
+      operationId: getNote
+      summary: Get a note
+      description: Returns the note together with its sections ordered by `note_order`.
+      parameters:
+        - $ref: '#/components/parameters/NoteIdPath'
+      responses:
+        '200':
+          description: The note and its sections.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NoteDetail'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    patch:
+      tags: [Notes]
+      operationId: updateNote
+      summary: Update a note
+      description: |
+        Omitted fields are unchanged. Send `project_id: null` to detach the
+        note from its project and `description: null` to clear the description.
+      parameters:
+        - $ref: '#/components/parameters/NoteIdPath'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateNoteRequest'
+      responses:
+        '200':
+          description: Updated note. Sections are not included.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Note'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+    delete:
+      tags: [Notes]
+      operationId: deleteNote
+      summary: Delete a note
+      description: Deletes the note and cascades to all of its sections.
+      parameters:
+        - $ref: '#/components/parameters/NoteIdPath'
+      responses:
+        '204':
+          description: Note deleted.
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /notes/{noteId}/sections:
+    get:
+      tags: [Note Sections]
+      operationId: listNoteSections
+      summary: List all sections of a note
+      description: |
+        Returns every section of the note without pagination, ordered by
+        `note_order` ascending by default.
+      parameters:
+        - $ref: '#/components/parameters/NoteIdPath'
+        - $ref: '#/components/parameters/Order'
+      responses:
+        '200':
+          description: All sections of the note.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/NoteSection'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    post:
+      tags: [Note Sections]
+      operationId: createNoteSection
+      summary: Add a section to a note
+      description: |
+        Appends a section. When `note_order` is omitted it is set to one more
+        than the current highest `note_order` in the note.
+      parameters:
+        - $ref: '#/components/parameters/NoteIdPath'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateSectionRequest'
+      responses:
+        '201':
+          description: Section created.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NoteSection'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+  /notes/{noteId}/sections/{sectionId}:
+    patch:
+      tags: [Note Sections]
+      operationId: updateNoteSection
+      summary: Update a section
+      description: Omitted fields are unchanged; sending `content` as null clears the content.
+      parameters:
+        - $ref: '#/components/parameters/NoteIdPath'
+        - $ref: '#/components/parameters/SectionIdPath'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateSectionRequest'
+      responses:
+        '200':
+          description: Updated section.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NoteSection'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+    delete:
+      tags: [Note Sections]
+      operationId: deleteNoteSection
+      summary: Delete a section
+      description: |
+        Deletes the section. Remaining `note_order` values are left as-is;
+        call the reorder endpoint to renumber them.
+      parameters:
+        - $ref: '#/components/parameters/NoteIdPath'
+        - $ref: '#/components/parameters/SectionIdPath'
+      responses:
+        '204':
+          description: Section deleted.
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /notes/{noteId}/sections/order:
+    put:
+      tags: [Note Sections]
+      operationId: reorderNoteSections
+      summary: Reorder sections
+      description: |
+        Replaces the order of every section in the note. `sectionIds` must
+        contain every section of the note exactly once; orders are rewritten
+        as `1..n` in the supplied order.
+      parameters:
+        - $ref: '#/components/parameters/NoteIdPath'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ReorderSectionsRequest'
+      responses:
+        '200':
+          description: All sections of the note in their new order.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/NoteSection'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+components:
+  securitySchemes:
+    cookieAuth:
+      type: apiKey
+      in: cookie
+      name: access_token
+      description: |
+        JWT access token stored in the `access_token` `HttpOnly` cookie.
+        Set by register, login, and refresh. Valid for 15 minutes.
+    refreshCookie:
+      type: apiKey
+      in: cookie
+      name: refresh_token
+      description: |
+        Opaque refresh token stored in the `refresh_token` `HttpOnly` cookie
+        (`Path=/api/auth`). Set by register and login, rotated by refresh.
+  parameters:
+    Page:
+      name: page
+      in: query
+      description: Page number, starting at 1.
+      schema:
+        type: integer
+        minimum: 1
+        default: 1
+    PerPage:
+      name: perPage
+      in: query
+      description: Number of items per page.
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 100
+        default: 20
+    Search:
+      name: search
+      in: query
+      description: |
+        Case-insensitive **substring** match (contains), not an exact match.
+        Implemented as `ILIKE '%<value>%'`; partial words match. For tags it
+        searches `name`; for projects and notes it searches `title` and
+        `description`. An empty value applies no filter.
+      schema:
+        type: string
+        maxLength: 255
+      example: note
+    Order:
+      name: order
+      in: query
+      description: Sort direction.
+      schema:
+        type: string
+        enum: [asc, desc]
+        default: asc
+    TagIdPath:
+      name: tagId
+      in: path
+      required: true
+      description: Tag id.
+      schema:
+        type: string
+        format: uuid
+    ProjectIdPath:
+      name: projectId
+      in: path
+      required: true
+      description: Project id.
+      schema:
+        type: string
+        format: uuid
+    NoteIdPath:
+      name: noteId
+      in: path
+      required: true
+      description: Note id.
+      schema:
+        type: string
+        format: uuid
+    SectionIdPath:
+      name: sectionId
+      in: path
+      required: true
+      description: Note section id.
+      schema:
+        type: string
+        format: uuid
+  responses:
+    Unauthorized:
+      description: Missing, invalid, or expired credentials.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            error:
+              code: UNAUTHORIZED
+              message: Authentication required
+    NotFound:
+      description: Resource not found or not owned by the authenticated user.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            error:
+              code: NOT_FOUND
+              message: Resource not found
+    Conflict:
+      description: Unique constraint violation.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            error:
+              code: CONFLICT
+              message: Username or email is already taken
+              details:
+                - field: email
+                  message: Email is already registered
+    UnprocessableEntity:
+      description: The request body or query parameters failed validation.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            error:
+              code: VALIDATION_ERROR
+              message: Invalid input
+              details:
+                - field: title
+                  message: Title is required
+    TooManyRequests:
+      description: Too many authentication attempts.
+      headers:
+        Retry-After:
+          description: Seconds to wait before retrying.
+          schema:
+            type: integer
+            minimum: 0
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            error:
+              code: RATE_LIMITED
+              message: Too many attempts, try again later
+  schemas:
+    User:
+      type: object
+      required: [id, username, email, created_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        username:
+          type: string
+          minLength: 1
+          maxLength: 255
+        email:
+          type: string
+          format: email
+          maxLength: 255
+        created_at:
+          type: string
+          format: date-time
+          nullable: true
+        updated_at:
+          type: string
+          format: date-time
+          nullable: true
+    Tag:
+      type: object
+      required: [id, name]
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+          minLength: 1
+          maxLength: 255
+    Project:
+      type: object
+      required: [id, title, tag_id]
+      properties:
+        id:
+          type: string
+          format: uuid
+        title:
+          type: string
+          minLength: 1
+          maxLength: 255
+        description:
+          type: string
+          nullable: true
+        tag_id:
+          type: string
+          format: uuid
+          nullable: true
+    Note:
+      type: object
+      required: [id, title, project_id, created_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        project_id:
+          type: string
+          format: uuid
+          nullable: true
+        title:
+          type: string
+          minLength: 1
+          maxLength: 255
+        description:
+          type: string
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+          nullable: true
+        updated_at:
+          type: string
+          format: date-time
+          nullable: true
+    NoteDetail:
+      allOf:
+        - $ref: '#/components/schemas/Note'
+        - type: object
+          required: [sections]
+          properties:
+            sections:
+              type: array
+              description: Sections of the note ordered by `note_order`.
+              items:
+                $ref: '#/components/schemas/NoteSection'
+    NoteSection:
+      type: object
+      required: [id, note_id, note_order, created_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        note_id:
+          type: string
+          format: uuid
+        note_order:
+          type: integer
+          minimum: 1
+        content:
+          type: string
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+          nullable: true
+        updated_at:
+          type: string
+          format: date-time
+          nullable: true
+    PaginationMeta:
+      type: object
+      required: [page, perPage, total, totalPage]
+      properties:
+        page:
+          type: integer
+          minimum: 1
+        perPage:
+          type: integer
+          minimum: 1
+        total:
+          type: integer
+          minimum: 0
+        totalPage:
+          type: integer
+          minimum: 0
+    TagList:
+      type: object
+      required: [items, meta]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/Tag'
+        meta:
+          $ref: '#/components/schemas/PaginationMeta'
+    ProjectList:
+      type: object
+      required: [items, meta]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/Project'
+        meta:
+          $ref: '#/components/schemas/PaginationMeta'
+    NoteList:
+      type: object
+      required: [items, meta]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/Note'
+        meta:
+          $ref: '#/components/schemas/PaginationMeta'
+    ErrorDetail:
+      type: object
+      required: [message]
+      properties:
+        field:
+          type: string
+          description: Field or parameter that caused the error.
+        message:
+          type: string
+    Error:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [code, message]
+          properties:
+            code:
+              type: string
+              enum:
+                - VALIDATION_ERROR
+                - UNAUTHORIZED
+                - INVALID_CREDENTIALS
+                - TOKEN_EXPIRED
+                - NOT_FOUND
+                - CONFLICT
+                - RATE_LIMITED
+                - INTERNAL_ERROR
+            message:
+              type: string
+            details:
+              type: array
+              items:
+                $ref: '#/components/schemas/ErrorDetail'
+    RegisterRequest:
+      type: object
+      required: [username, email, password]
+      additionalProperties: false
+      properties:
+        username:
+          type: string
+          minLength: 1
+          maxLength: 255
+        email:
+          type: string
+          format: email
+          maxLength: 255
+        password:
+          type: string
+          format: password
+          minLength: 8
+          maxLength: 72
+          description: Bcrypt-compatible password (maximum 72 bytes).
+    LoginRequest:
+      type: object
+      required: [identifier, password]
+      additionalProperties: false
+      properties:
+        identifier:
+          type: string
+          minLength: 1
+          maxLength: 255
+          description: Username or email.
+        password:
+          type: string
+          format: password
+          minLength: 1
+          maxLength: 72
+    UpdateMeRequest:
+      type: object
+      minProperties: 1
+      additionalProperties: false
+      properties:
+        username:
+          type: string
+          minLength: 1
+          maxLength: 255
+        email:
+          type: string
+          format: email
+          maxLength: 255
+    ChangePasswordRequest:
+      type: object
+      required: [currentPassword, newPassword]
+      additionalProperties: false
+      properties:
+        currentPassword:
+          type: string
+          format: password
+          minLength: 1
+          maxLength: 72
+        newPassword:
+          type: string
+          format: password
+          minLength: 8
+          maxLength: 72
+    CreateTagRequest:
+      type: object
+      required: [name]
+      additionalProperties: false
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 255
+    UpdateTagRequest:
+      type: object
+      required: [name]
+      additionalProperties: false
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 255
+    CreateProjectRequest:
+      type: object
+      required: [title]
+      additionalProperties: false
+      properties:
+        title:
+          type: string
+          minLength: 1
+          maxLength: 255
+        description:
+          type: string
+          nullable: true
+        tag_id:
+          type: string
+          format: uuid
+          nullable: true
+    UpdateProjectRequest:
+      type: object
+      minProperties: 1
+      additionalProperties: false
+      properties:
+        title:
+          type: string
+          minLength: 1
+          maxLength: 255
+        description:
+          type: string
+          nullable: true
+        tag_id:
+          type: string
+          format: uuid
+          nullable: true
+    SectionInput:
+      type: object
+      additionalProperties: false
+      properties:
+        content:
+          type: string
+          nullable: true
+        note_order:
+          type: integer
+          minimum: 1
+    CreateNoteRequest:
+      type: object
+      required: [title]
+      additionalProperties: false
+      properties:
+        title:
+          type: string
+          minLength: 1
+          maxLength: 255
+        description:
+          type: string
+          nullable: true
+        project_id:
+          type: string
+          format: uuid
+          nullable: true
+        sections:
+          type: array
+          items:
+            $ref: '#/components/schemas/SectionInput'
+    UpdateNoteRequest:
+      type: object
+      minProperties: 1
+      additionalProperties: false
+      properties:
+        title:
+          type: string
+          minLength: 1
+          maxLength: 255
+        description:
+          type: string
+          nullable: true
+        project_id:
+          type: string
+          format: uuid
+          nullable: true
+    CreateSectionRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        content:
+          type: string
+          nullable: true
+        note_order:
+          type: integer
+          minimum: 1
+    UpdateSectionRequest:
+      type: object
+      minProperties: 1
+      additionalProperties: false
+      properties:
+        content:
+          type: string
+          nullable: true
+        note_order:
+          type: integer
+          minimum: 1
+    ReorderSectionsRequest:
+      type: object
+      required: [sectionIds]
+      additionalProperties: false
+      properties:
+        sectionIds:
+          type: array
+          minItems: 1
+          uniqueItems: true
+          description: Every section id of the note, in the desired order.
+          items:
+            type: string
+            format: uuid
