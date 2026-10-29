@@ -113,6 +113,14 @@ async function authenticateUser(accessToken: string | undefined) {
   return user;
 }
 
+export async function getAuthenticatedUserId(
+  accessToken: string | undefined,
+): Promise<string> {
+  const user = await authenticateUser(accessToken);
+
+  return user.id;
+}
+
 export async function registerUser(
   body: unknown,
   metadata: SessionMetadata,
