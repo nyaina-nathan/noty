@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, type FormEvent } from "react";
+import { useState } from "react";
+import Link from "next/link";
 import { requestJson } from "@/lib/api/client";
 import type { Note, NoteSortField } from "@/types/note.types";
 import type { Project } from "@/types/project.types";
@@ -12,13 +13,12 @@ import {
   usePagedList,
 } from "./hooks";
 import { FolderIcon, NoteIcon, PlusIcon, TagIcon } from "./icons";
+import { NoteFormModal } from "./note-form-modal";
 import {
   ConfirmDialog,
   EmptyState,
   ErrorBanner,
-  FieldError,
   ListSkeleton,
-  Modal,
   PageHeader,
   Pagination,
   RowActions,
@@ -26,14 +26,10 @@ import {
   SelectControl,
   Toolbar,
   formatDate,
-  inputClass,
-  labelClass,
-  selectClass,
-  textareaClass,
 } from "./ui";
 
 const PER_PAGE = 10;
-const TITLE_MAX_LENGTH = 255;
+
 
 type SortValue =
   | "updated_at:desc"
@@ -307,9 +303,15 @@ export function NotesView() {
               return (
                 <li
                   key={note.id}
-                  className="flex items-start justify-between gap-3 px-4 py-4 transition-colors hover:bg-mist/60"
+                  className="relative flex items-start justify-between gap-3 px-4 py-4 transition-colors hover:bg-mist/60"
                 >
-                  <div className="flex min-w-0 items-start gap-3">
+                  <Link
+                    href={`/dashboard/notes/${note.id}`}
+                    aria-label={`Open note ${note.title}`}
+                    className="absolute inset-0 z-0"
+                  />
+
+                  <div className="pointer-events-none relative z-10 flex min-w-0 items-start gap-3">
                     <span className="mt-0.5 grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-primary/10 text-primary-strong">
                       <NoteIcon className="h-4 w-4" />
                     </span>
@@ -346,14 +348,16 @@ export function NotesView() {
                     </div>
                   </div>
 
-                  <RowActions
-                    label={`note ${note.title}`}
-                    onEdit={() => setEditor(note)}
-                    onDelete={() => {
-                      setDeleteError(null);
-                      setPendingDelete(note);
-                    }}
-                  />
+                  <div className="relative z-10">
+                    <RowActions
+                      label={`note ${note.title}`}
+                      onEdit={() => setEditor(note)}
+                      onDelete={() => {
+                        setDeleteError(null);
+                        setPendingDelete(note);
+                      }}
+                    />
+                  </div>
                 </li>
               );
             })}
@@ -371,7 +375,7 @@ export function NotesView() {
       )}
 
       {editor !== null ? (
-        <NoteEditor
+        <NoteFormModal
           note={editor === "new" ? null : editor}
           projects={projects}
           tags={tags}
@@ -402,207 +406,3 @@ export function NotesView() {
   );
 }
 
-function NoteEditor({
-  note,
-  projects,
-  tags,
-  onClose,
-  onSaved,
-}: {
-  note: Note | null;
-  projects: Project[];
-  tags: Tag[];
-  onClose: () => void;
-  onSaved: () => void;
-}) {
-  const [title, setTitle] = useState(note?.title ?? "");
-  const [description, setDescription] = useState(note?.description ?? "");
-  const [projectId, setProjectId] = useState(note?.project_id ?? "");
-  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
-  const [formError, setFormError] = useState<string | null>(null);
-  const [submitting, setSubmitting] = useState(false);
-
-  const tagById = new Map(tags.map((tag) => [tag.id, tag]));
-  const selectedProject = projectId
-    ? projects.find((project) => project.id === projectId)
-    : undefined;
-  const inheritedTag = selectedProject?.tag_id
-    ? tagById.get(selectedProject.tag_id)
-    : undefined;
-
-  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-
-    if (submitting) {
-      return;
-    }
-
-    const trimmedTitle = title.trim();
-
-    if (!trimmedTitle) {
-      setFieldErrors({ title: "Enter a title for the note." });
-      return;
-    }
-
-    if (trimmedTitle.length > TITLE_MAX_LENGTH) {
-      setFieldErrors({
-        title: `Use ${TITLE_MAX_LENGTH} characters or fewer.`,
-      });
-      return;
-    }
-
-    setSubmitting(true);
-    setFieldErrors({});
-    setFormError(null);
-
-    const body = {
-      title: trimmedTitle,
-      description: description.trim() || null,
-      project_id: projectId || null,
-    };
-
-    const result = note
-      ? await requestJson<Note>(`/api/notes/${note.id}`, {
-          method: "PATCH",
-          body,
-        })
-      : await requestJson<Note>("/api/notes", {
-          method: "POST",
-          body,
-        });
-
-    if (!result.ok) {
-      const nextErrors: Record<string, string> = {};
-
-      for (const detail of result.details) {
-        if (detail.field && !nextErrors[detail.field]) {
-          nextErrors[detail.field] = detail.message;
-        }
-      }
-
-      if (Object.keys(nextErrors).length > 0) {
-        setFieldErrors(nextErrors);
-      } else {
-        setFormError(describeFailure(result));
-      }
-
-      setSubmitting(false);
-      return;
-    }
-
-    onSaved();
-  }
-
-  return (
-    <Modal
-      title={note ? "Edit note" : "New note"}
-      description={
-        note
-          ? "Update the title, description, or the project this note belongs to."
-          : "Capture the idea now — sections can be added later."
-      }
-      onClose={onClose}
-    >
-      <form onSubmit={handleSubmit} noValidate>
-        {formError ? (
-          <ErrorBanner message={formError} className="mb-4" />
-        ) : null}
-
-        <div>
-          <label htmlFor="note-title" className={labelClass}>
-            Title
-          </label>
-          <input
-            id="note-title"
-            name="title"
-            type="text"
-            value={title}
-            onChange={(event) => {
-              setTitle(event.target.value);
-              setFieldErrors((current) => ({ ...current, title: "" }));
-            }}
-            maxLength={TITLE_MAX_LENGTH}
-            placeholder="e.g. Launch checklist"
-            aria-invalid={fieldErrors.title ? true : undefined}
-            aria-describedby={fieldErrors.title ? "note-title-error" : undefined}
-            className={inputClass}
-          />
-          <FieldError id="note-title-error">{fieldErrors.title}</FieldError>
-        </div>
-
-        <div className="mt-4">
-          <label htmlFor="note-description" className={labelClass}>
-            Description <span className="text-muted">(optional)</span>
-          </label>
-          <textarea
-            id="note-description"
-            name="description"
-            value={description}
-            onChange={(event) => setDescription(event.target.value)}
-            rows={4}
-            placeholder="What is this note about?"
-            aria-invalid={fieldErrors.description ? true : undefined}
-            aria-describedby={
-              fieldErrors.description ? "note-description-error" : undefined
-            }
-            className={textareaClass}
-          />
-          <FieldError id="note-description-error">
-            {fieldErrors.description}
-          </FieldError>
-        </div>
-
-        <div className="mt-4">
-          <label htmlFor="note-project" className={labelClass}>
-            Project <span className="text-muted">(optional)</span>
-          </label>
-          <select
-            id="note-project"
-            name="project_id"
-            value={projectId}
-            onChange={(event) => setProjectId(event.target.value)}
-            aria-invalid={fieldErrors.project_id ? true : undefined}
-            aria-describedby={
-              fieldErrors.project_id
-                ? "note-project-error"
-                : "note-project-hint"
-            }
-            className={selectClass}
-          >
-            <option value="">No project</option>
-            {projects.map((project) => (
-              <option key={project.id} value={project.id}>
-                {project.title}
-              </option>
-            ))}
-          </select>
-          <FieldError id="note-project-error">
-            {fieldErrors.project_id}
-          </FieldError>
-
-          <p id="note-project-hint" className="mt-1.5 text-sm text-muted">
-            {inheritedTag
-              ? `This note will be tagged “${inheritedTag.name}”.`
-              : selectedProject
-                ? "This project has no tag, so the note stays untagged."
-                : "Notes inherit the tag of their project."}
-          </p>
-        </div>
-
-        <div className="mt-6 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
-          <button
-            type="button"
-            onClick={onClose}
-            disabled={submitting}
-            className="btn btn-secondary"
-          >
-            Cancel
-          </button>
-          <button type="submit" disabled={submitting} className="btn btn-primary">
-            {submitting ? "Saving…" : note ? "Save changes" : "Create note"}
-          </button>
-        </div>
-      </form>
-    </Modal>
-  );
-}

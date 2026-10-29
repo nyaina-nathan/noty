@@ -23,7 +23,7 @@ type ErrorPayload = {
   };
 };
 
-type HttpMethod = "GET" | "POST" | "PATCH" | "DELETE";
+type HttpMethod = "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
 
 export type RequestOptions = {
   method?: HttpMethod;
