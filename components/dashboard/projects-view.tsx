@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, type FormEvent } from "react";
+import { useState } from "react";
+import Link from "next/link";
 import { requestJson } from "@/lib/api/client";
 import type { Project } from "@/types/project.types";
 import type { Tag } from "@/types/tag.types";
@@ -17,27 +18,21 @@ import {
   PlusIcon,
   TagIcon,
 } from "./icons";
+import { ProjectFormModal } from "./project-form-modal";
 import {
   ConfirmDialog,
   EmptyState,
   ErrorBanner,
-  FieldError,
   ListSkeleton,
-  Modal,
   PageHeader,
   Pagination,
   RowActions,
   SearchInput,
   SelectControl,
   Toolbar,
-  inputClass,
-  labelClass,
-  selectClass,
-  textareaClass,
 } from "./ui";
 
 const PER_PAGE = 10;
-const TITLE_MAX_LENGTH = 255;
 
 export function ProjectsView() {
   const [search, setSearch] = useState("");
@@ -241,9 +236,15 @@ export function ProjectsView() {
               return (
                 <li
                   key={project.id}
-                  className="flex items-start justify-between gap-3 px-4 py-4 transition-colors hover:bg-mist/60"
+                  className="relative flex items-start justify-between gap-3 px-4 py-4 transition-colors hover:bg-mist/60"
                 >
-                  <div className="flex min-w-0 items-start gap-3">
+                  <Link
+                    href={`/dashboard/projects/${project.id}`}
+                    aria-label={`Open project ${project.title}`}
+                    className="absolute inset-0 z-0"
+                  />
+
+                  <div className="pointer-events-none relative z-10 flex min-w-0 items-start gap-3">
                     <span className="mt-0.5 grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-secondary/10 text-secondary">
                       <FolderIcon className="h-4 w-4" />
                     </span>
@@ -273,14 +274,16 @@ export function ProjectsView() {
                     </div>
                   </div>
 
-                  <RowActions
-                    label={`project ${project.title}`}
-                    onEdit={() => setEditor(project)}
-                    onDelete={() => {
-                      setDeleteError(null);
-                      setPendingDelete(project);
-                    }}
-                  />
+                  <div className="relative z-10">
+                    <RowActions
+                      label={`project ${project.title}`}
+                      onEdit={() => setEditor(project)}
+                      onDelete={() => {
+                        setDeleteError(null);
+                        setPendingDelete(project);
+                      }}
+                    />
+                  </div>
                 </li>
               );
             })}
@@ -298,7 +301,7 @@ export function ProjectsView() {
       )}
 
       {editor !== null ? (
-        <ProjectEditor
+        <ProjectFormModal
           project={editor === "new" ? null : editor}
           tags={tags}
           onClose={() => setEditor(null)}
@@ -325,201 +328,5 @@ export function ProjectsView() {
         />
       ) : null}
     </div>
-  );
-}
-
-function ProjectEditor({
-  project,
-  tags,
-  onClose,
-  onSaved,
-}: {
-  project: Project | null;
-  tags: Tag[];
-  onClose: () => void;
-  onSaved: () => void;
-}) {
-  const [title, setTitle] = useState(project?.title ?? "");
-  const [description, setDescription] = useState(project?.description ?? "");
-  const [tagId, setTagId] = useState(project?.tag_id ?? "");
-  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
-  const [formError, setFormError] = useState<string | null>(null);
-  const [submitting, setSubmitting] = useState(false);
-
-  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-
-    if (submitting) {
-      return;
-    }
-
-    const trimmedTitle = title.trim();
-
-    if (!trimmedTitle) {
-      setFieldErrors({ title: "Enter a project title." });
-      return;
-    }
-
-    if (trimmedTitle.length > TITLE_MAX_LENGTH) {
-      setFieldErrors({
-        title: `Use ${TITLE_MAX_LENGTH} characters or fewer.`,
-      });
-      return;
-    }
-
-    setSubmitting(true);
-    setFieldErrors({});
-    setFormError(null);
-
-    const body = {
-      title: trimmedTitle,
-      description: description.trim() || null,
-      tag_id: tagId || null,
-    };
-
-    const result = project
-      ? await requestJson<Project>(`/api/projects/${project.id}`, {
-          method: "PATCH",
-          body,
-        })
-      : await requestJson<Project>("/api/projects", {
-          method: "POST",
-          body,
-        });
-
-    if (!result.ok) {
-      const nextErrors: Record<string, string> = {};
-
-      for (const detail of result.details) {
-        if (detail.field && !nextErrors[detail.field]) {
-          nextErrors[detail.field] = detail.message;
-        }
-      }
-
-      if (Object.keys(nextErrors).length > 0) {
-        setFieldErrors(nextErrors);
-      } else {
-        setFormError(describeFailure(result));
-      }
-
-      setSubmitting(false);
-      return;
-    }
-
-    onSaved();
-  }
-
-  return (
-    <Modal
-      title={project ? "Edit project" : "New project"}
-      description={
-        project
-          ? "Update the details or move the project to another tag."
-          : "Give the project a title, then optionally add a description and tag."
-      }
-      onClose={onClose}
-    >
-      <form onSubmit={handleSubmit} noValidate>
-        {formError ? (
-          <ErrorBanner message={formError} className="mb-4" />
-        ) : null}
-
-        <div>
-          <label htmlFor="project-title" className={labelClass}>
-            Title
-          </label>
-          <input
-            id="project-title"
-            name="title"
-            type="text"
-            value={title}
-            onChange={(event) => {
-              setTitle(event.target.value);
-              setFieldErrors((current) => ({ ...current, title: "" }));
-            }}
-            maxLength={TITLE_MAX_LENGTH}
-            placeholder="e.g. Q4 launch"
-            aria-invalid={fieldErrors.title ? true : undefined}
-            aria-describedby={
-              fieldErrors.title ? "project-title-error" : undefined
-            }
-            className={inputClass}
-          />
-          <FieldError id="project-title-error">{fieldErrors.title}</FieldError>
-        </div>
-
-        <div className="mt-4">
-          <label htmlFor="project-description" className={labelClass}>
-            Description <span className="text-muted">(optional)</span>
-          </label>
-          <textarea
-            id="project-description"
-            name="description"
-            value={description}
-            onChange={(event) => setDescription(event.target.value)}
-            rows={3}
-            placeholder="What is this project about?"
-            aria-invalid={fieldErrors.description ? true : undefined}
-            aria-describedby={
-              fieldErrors.description
-                ? "project-description-error"
-                : undefined
-            }
-            className={textareaClass}
-          />
-          <FieldError id="project-description-error">
-            {fieldErrors.description}
-          </FieldError>
-        </div>
-
-        <div className="mt-4">
-          <label htmlFor="project-tag" className={labelClass}>
-            Tag <span className="text-muted">(optional)</span>
-          </label>
-          <select
-            id="project-tag"
-            name="tag_id"
-            value={tagId}
-            onChange={(event) => setTagId(event.target.value)}
-            aria-invalid={fieldErrors.tag_id ? true : undefined}
-            aria-describedby={
-              fieldErrors.tag_id ? "project-tag-error" : "project-tag-hint"
-            }
-            className={selectClass}
-          >
-            <option value="">No tag</option>
-            {tags.map((tag) => (
-              <option key={tag.id} value={tag.id}>
-                {tag.name}
-              </option>
-            ))}
-          </select>
-          <FieldError id="project-tag-error">{fieldErrors.tag_id}</FieldError>
-          {!fieldErrors.tag_id ? (
-            <p id="project-tag-hint" className="mt-1.5 text-sm text-muted">
-              Notes in this project inherit the tag in the notes list.
-            </p>
-          ) : null}
-        </div>
-
-        <div className="mt-6 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
-          <button
-            type="button"
-            onClick={onClose}
-            disabled={submitting}
-            className="btn btn-secondary"
-          >
-            Cancel
-          </button>
-          <button type="submit" disabled={submitting} className="btn btn-primary">
-            {submitting
-              ? "Saving…"
-              : project
-                ? "Save changes"
-                : "Create project"}
-          </button>
-        </div>
-      </form>
-    </Modal>
   );
 }

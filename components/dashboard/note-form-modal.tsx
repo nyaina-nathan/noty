@@ -22,6 +22,10 @@ type NoteFormModalProps = {
   note: Note | null;
   projects: Project[];
   tags: Tag[];
+  /** Pre-selects a project when creating a note. */
+  defaultProjectId?: string;
+  /** Pins a new note to its preset project instead of showing a picker. */
+  lockProject?: boolean;
   onClose: () => void;
   onSaved: (note: Note) => void;
 };
@@ -30,12 +34,16 @@ export function NoteFormModal({
   note,
   projects,
   tags,
+  defaultProjectId,
+  lockProject = false,
   onClose,
   onSaved,
 }: NoteFormModalProps) {
   const [title, setTitle] = useState(note?.title ?? "");
   const [description, setDescription] = useState(note?.description ?? "");
-  const [projectId, setProjectId] = useState(note?.project_id ?? "");
+  const [projectId, setProjectId] = useState(
+    note?.project_id ?? defaultProjectId ?? "",
+  );
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [formError, setFormError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -171,40 +179,56 @@ export function NoteFormModal({
         </div>
 
         <div className="mt-4">
-          <label htmlFor="note-project" className={labelClass}>
-            Project <span className="text-muted">(optional)</span>
-          </label>
-          <select
-            id="note-project"
-            name="project_id"
-            value={projectId}
-            onChange={(event) => setProjectId(event.target.value)}
-            aria-invalid={fieldErrors.project_id ? true : undefined}
-            aria-describedby={
-              fieldErrors.project_id
-                ? "note-project-error"
-                : "note-project-hint"
-            }
-            className={selectClass}
-          >
-            <option value="">No project</option>
-            {projects.map((project) => (
-              <option key={project.id} value={project.id}>
-                {project.title}
-              </option>
-            ))}
-          </select>
-          <FieldError id="note-project-error">
-            {fieldErrors.project_id}
-          </FieldError>
+          {lockProject && !note ? (
+            <>
+              <span className={labelClass}>Project</span>
+              <p className="mt-2 rounded-lg border border-line bg-mist/60 px-3 py-2.5 text-sm text-ink">
+                {selectedProject ? selectedProject.title : "No project"}
+              </p>
+              <p className="mt-1.5 text-sm text-muted">
+                {inheritedTag
+                  ? `This note will be tagged “${inheritedTag.name}”.`
+                  : "The note is added to this project. Write its sections next."}
+              </p>
+            </>
+          ) : (
+            <>
+              <label htmlFor="note-project" className={labelClass}>
+                Project <span className="text-muted">(optional)</span>
+              </label>
+              <select
+                id="note-project"
+                name="project_id"
+                value={projectId}
+                onChange={(event) => setProjectId(event.target.value)}
+                aria-invalid={fieldErrors.project_id ? true : undefined}
+                aria-describedby={
+                  fieldErrors.project_id
+                    ? "note-project-error"
+                    : "note-project-hint"
+                }
+                className={selectClass}
+              >
+                <option value="">No project</option>
+                {projects.map((project) => (
+                  <option key={project.id} value={project.id}>
+                    {project.title}
+                  </option>
+                ))}
+              </select>
+              <FieldError id="note-project-error">
+                {fieldErrors.project_id}
+              </FieldError>
 
-          <p id="note-project-hint" className="mt-1.5 text-sm text-muted">
-            {inheritedTag
-              ? `This note will be tagged “${inheritedTag.name}”.`
-              : selectedProject
-                ? "This project has no tag, so the note stays untagged."
-                : "Notes inherit the tag of their project."}
-          </p>
+              <p id="note-project-hint" className="mt-1.5 text-sm text-muted">
+                {inheritedTag
+                  ? `This note will be tagged “${inheritedTag.name}”.`
+                  : selectedProject
+                    ? "This project has no tag, so the note stays untagged."
+                    : "Notes inherit the tag of their project."}
+              </p>
+            </>
+          )}
         </div>
 
         <div className="mt-6 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
