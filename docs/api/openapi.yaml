@@ -14,9 +14,10 @@ info:
     - `refresh_token` — opaque random token valid for 30 days
       (`Path=/api/auth`). Only its SHA-256 hash is stored in `refresh_tokens`.
 
-    `POST /auth/refresh` rotates the refresh token: the current token is
-    revoked and a new one is issued. `POST /auth/logout` revokes the current
-    refresh token and clears both cookies.
+    `POST /auth/refresh` issues a new access token. The refresh token is only
+    rotated (revoked and replaced) when it has less than 24 hours left before
+    expiry; otherwise the existing token is kept. `POST /auth/logout` revokes
+    the current refresh token and clears both cookies.
 
     Cookies use `SameSite=Lax`, `HttpOnly`, and `Secure` in production. Unsafe
     requests from other origins are rejected, which is the CSRF mitigation;
@@ -141,20 +142,22 @@ paths:
     post:
       tags: [Auth]
       operationId: refreshSession
-      summary: Rotate the session
+      summary: Refresh the session
       description: |
-        Revokes the refresh token supplied in the `refresh_token` cookie and
-        issues a new access token and refresh token. The old refresh token is
-        marked with `revoked_at` and can no longer be used.
+        Issues a new access token from the `refresh_token` cookie. When the
+        refresh token has less than 24 hours before expiry it is revoked and
+        replaced with a new one; otherwise it is kept unchanged. Rotated
+        tokens are marked with `revoked_at` and can no longer be used.
       security:
         - refreshCookie: []
       responses:
         '204':
-          description: Session refreshed. New auth cookies are set.
+          description: Session refreshed. A new access token cookie is set.
           headers:
             Set-Cookie:
               description: |
-                Rotated `access_token` and `refresh_token` cookies.
+                A new `access_token` cookie, plus a new `refresh_token` cookie
+                only when the token was rotated.
               schema:
                 type: string
         '401':
