@@ -108,6 +108,7 @@ describe("proxy", () => {
       expect(redirectTarget(response).searchParams.get("next")).toBe(
         "/dashboard",
       );
+      expect(redirectTarget(response).searchParams.get("fallback")).toBe(path);
     },
   );
 

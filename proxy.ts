@@ -43,7 +43,9 @@ export async function proxy(request: NextRequest) {
       return NextResponse.next();
     }
 
-    return NextResponse.redirect(buildRefreshUrl(request, DASHBOARD_PATH));
+    return NextResponse.redirect(
+      buildRefreshUrl(request, DASHBOARD_PATH, pathname),
+    );
   }
 
   if (isAuthenticated) {

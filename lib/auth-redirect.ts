@@ -9,6 +9,9 @@ export const REFRESH_PATH = "/api/auth/refresh";
 export const SESSION_ENDED_PARAM = "session";
 export const SESSION_ENDED_VALUE = "ended";
 
+/** Auth page to return to when the refresh attempt fails. */
+export const FALLBACK_PARAM = "fallback";
+
 export function isAuthPage(pathname: string): boolean {
   return pathname === LOGIN_PATH || pathname === REGISTER_PATH;
 }
@@ -20,20 +23,36 @@ export function hasSessionEnded(request: NextRequest): boolean {
   );
 }
 
-/** Sends the browser through the refresh endpoint, then on to `next`. */
-export function buildRefreshUrl(request: NextRequest, next: string): URL {
+/**
+ * Sends the browser through the refresh endpoint, then on to `next`. When the
+ * refresh fails the browser is returned to `fallback`.
+ */
+export function buildRefreshUrl(
+  request: NextRequest,
+  next: string,
+  fallback: string = LOGIN_PATH,
+): URL {
   const url = new URL(REFRESH_PATH, request.url);
   url.searchParams.set("next", next);
+  url.searchParams.set(FALLBACK_PARAM, fallback);
 
   return url;
 }
 
-/** Login page flagged with the failed-refresh marker. */
-export function buildSessionEndedUrl(request: NextRequest): URL {
-  const url = new URL(LOGIN_PATH, request.url);
+/** Auth page flagged with the failed-refresh marker. */
+export function buildSessionEndedUrl(
+  request: NextRequest,
+  fallback: string = LOGIN_PATH,
+): URL {
+  const url = new URL(fallback, request.url);
   url.searchParams.set(SESSION_ENDED_PARAM, SESSION_ENDED_VALUE);
 
   return url;
+}
+
+/** A failed refresh may only return to an auth page. */
+export function getSafeFallbackPath(value: string | null): string {
+  return value !== null && isAuthPage(value) ? value : LOGIN_PATH;
 }
 
 /**

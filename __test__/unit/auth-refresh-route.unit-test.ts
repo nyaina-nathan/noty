@@ -91,6 +91,36 @@ describe("GET /api/auth/refresh", () => {
     expect(setCookie(response, REFRESH_TOKEN_COOKIE)).toContain("Max-Age=0");
   });
 
+  it("returns to the register page when that was the requested fallback", async () => {
+    mocks.refreshSession.mockRejectedValue(ApiError.unauthorized());
+
+    const response = await GET(
+      request(
+        "/api/auth/refresh?next=%2Fdashboard&fallback=%2Fregister",
+        undefined,
+      ),
+    );
+
+    expect(response.headers.get("location")).toBe(
+      "http://localhost:3000/register?session=ended",
+    );
+  });
+
+  it("ignores a fallback that is not an auth page", async () => {
+    mocks.refreshSession.mockRejectedValue(ApiError.unauthorized());
+
+    const response = await GET(
+      request(
+        "/api/auth/refresh?next=%2Fdashboard&fallback=%2F%2Fevil.example",
+        undefined,
+      ),
+    );
+
+    expect(response.headers.get("location")).toBe(
+      "http://localhost:3000/login?session=ended",
+    );
+  });
+
   it("never redirects off-site through the next parameter", async () => {
     const response = await GET(
       request(

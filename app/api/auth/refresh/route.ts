@@ -2,7 +2,12 @@ import { NextResponse, type NextRequest } from "next/server";
 import { ApiError } from "@/lib/api/errors";
 import { withApiErrorHandling } from "@/lib/api/handler";
 import { getSessionMetadata } from "@/lib/api/request";
-import { buildSessionEndedUrl, getSafeNextPath } from "@/lib/auth-redirect";
+import {
+  FALLBACK_PARAM,
+  buildSessionEndedUrl,
+  getSafeFallbackPath,
+  getSafeNextPath,
+} from "@/lib/auth-redirect";
 import {
   REFRESH_TOKEN_COOKIE,
   clearAuthCookies,
@@ -33,11 +38,14 @@ export const POST = withApiErrorHandling(async (request: NextRequest) => {
 
 /**
  * Browser navigation entry point used by the proxy: refreshes the session and
- * forwards to `next`, or clears the cookies and returns to the login page so
- * the auth pages can render the signed-out form.
+ * forwards to `next`, or clears the cookies and returns to `fallback` (an auth
+ * page) so it can render the signed-out form.
  */
 export async function GET(request: NextRequest): Promise<NextResponse> {
   const next = getSafeNextPath(request.nextUrl.searchParams.get("next"));
+  const fallback = getSafeFallbackPath(
+    request.nextUrl.searchParams.get(FALLBACK_PARAM),
+  );
 
   try {
     const { accessToken, refreshToken } = await rotateSession(request);
@@ -55,7 +63,9 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       console.error(error);
     }
 
-    const response = NextResponse.redirect(buildSessionEndedUrl(request));
+    const response = NextResponse.redirect(
+      buildSessionEndedUrl(request, fallback),
+    );
     clearAuthCookies(response);
 
     return response;
