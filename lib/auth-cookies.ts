@@ -1,12 +1,15 @@
 import type { NextResponse } from "next/server";
 import {
+  ACCESS_TOKEN_COOKIE,
+  REFRESH_TOKEN_COOKIE,
+} from "@/lib/auth-cookie-names";
+import {
   ACCESS_TOKEN_TTL_SECONDS,
   REFRESH_TOKEN_TTL_SECONDS,
 } from "@/lib/jwt";
 import type { AuthTokens } from "@/types/auth.types";
 
-export const ACCESS_TOKEN_COOKIE = "access_token";
-export const REFRESH_TOKEN_COOKIE = "refresh_token";
+export { ACCESS_TOKEN_COOKIE, REFRESH_TOKEN_COOKIE };
 
 const ACCESS_TOKEN_PATH = "/";
 const REFRESH_TOKEN_PATH = "/api/auth";

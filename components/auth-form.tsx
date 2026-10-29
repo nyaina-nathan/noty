@@ -125,7 +125,9 @@ export function AuthForm({ mode }: { mode: Mode }) {
           password: values.password,
         };
 
-    const result = await postJson<PublicUser>(endpoint, payload);
+    const result = await postJson<PublicUser>(endpoint, payload, {
+      allowRefresh: false,
+    });
 
     if (!result.ok) {
       const fieldErrors: FieldErrors = {};
