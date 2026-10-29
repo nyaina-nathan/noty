@@ -387,6 +387,9 @@ paths:
       tags: [Projects]
       operationId: createProject
       summary: Create a project
+      description: |
+        `tag_id`, when provided, must reference a tag owned by the authenticated
+        user. Otherwise the request fails with `404 NOT_FOUND`.
       requestBody:
         required: true
         content:
@@ -428,7 +431,9 @@ paths:
       summary: Update a project
       description: |
         Omitted fields are unchanged. Send `tag_id: null` to detach the tag and
-        `description: null` to clear the description.
+        `description: null` to clear the description. A non-null `tag_id` must
+        reference a tag owned by the authenticated user, otherwise the request
+        fails with `404 NOT_FOUND`.
       parameters:
         - $ref: '#/components/parameters/ProjectIdPath'
       requestBody:

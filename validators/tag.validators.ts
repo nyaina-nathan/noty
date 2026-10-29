@@ -1,4 +1,16 @@
 import { ApiError, type ErrorDetail } from "@/lib/api/errors";
+import {
+  DEFAULT_PAGE,
+  DEFAULT_PER_PAGE,
+  MAX_PER_PAGE,
+  SEARCH_MAX_LENGTH,
+  isUuid,
+  parsePositiveInteger,
+  readString,
+  rejectUnknownFields,
+  requireObject,
+  throwIfInvalid,
+} from "@/lib/api/validation";
 import type {
   CreateTagInput,
   ListTagsQuery,
@@ -6,63 +18,6 @@ import type {
 } from "@/types/tag.types";
 
 const TAG_NAME_MAX_LENGTH = 255;
-const SEARCH_MAX_LENGTH = 255;
-const DEFAULT_PAGE = 1;
-const DEFAULT_PER_PAGE = 20;
-const MAX_PER_PAGE = 100;
-
-const UUID_PATTERN =
-  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-function requireObject(body: unknown): Record<string, unknown> {
-  if (!isRecord(body)) {
-    throw ApiError.validation([
-      { message: "Request body must be a JSON object" },
-    ]);
-  }
-
-  return body;
-}
-
-function rejectUnknownFields(
-  body: Record<string, unknown>,
-  allowed: readonly string[],
-  details: ErrorDetail[],
-): void {
-  for (const field of Object.keys(body)) {
-    if (!allowed.includes(field)) {
-      details.push({ field, message: "Unknown field" });
-    }
-  }
-}
-
-function readString(
-  body: Record<string, unknown>,
-  field: string,
-  details: ErrorDetail[],
-  required: boolean,
-): string | undefined {
-  const value = body[field];
-
-  if (value === undefined) {
-    if (required) {
-      details.push({ field, message: "Is required" });
-    }
-
-    return undefined;
-  }
-
-  if (typeof value !== "string") {
-    details.push({ field, message: "Must be a string" });
-    return undefined;
-  }
-
-  return value;
-}
 
 function validateName(value: string, details: ErrorDetail[]): string {
   const name = value.trim();
@@ -77,37 +32,6 @@ function validateName(value: string, details: ErrorDetail[]): string {
   }
 
   return name;
-}
-
-function throwIfInvalid(details: ErrorDetail[]): void {
-  if (details.length > 0) {
-    throw ApiError.validation(details);
-  }
-}
-
-function parsePositiveInteger(
-  raw: string | null,
-  field: string,
-  fallback: number,
-  details: ErrorDetail[],
-): number {
-  if (raw === null) {
-    return fallback;
-  }
-
-  if (!/^\d+$/.test(raw)) {
-    details.push({ field, message: "Must be a positive integer" });
-    return fallback;
-  }
-
-  const value = Number(raw);
-
-  if (!Number.isSafeInteger(value) || value < 1) {
-    details.push({ field, message: "Must be a positive integer" });
-    return fallback;
-  }
-
-  return value;
 }
 
 export function validateCreateTagInput(body: unknown): CreateTagInput {
@@ -129,7 +53,7 @@ export function validateUpdateTagInput(body: unknown): UpdateTagInput {
 }
 
 export function validateTagId(tagId: string): string {
-  if (!UUID_PATTERN.test(tagId)) {
+  if (!isUuid(tagId)) {
     throw ApiError.notFound("Tag not found");
   }
 
