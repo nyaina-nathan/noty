@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { ApiError } from "@/lib/api/errors";
+import { EMPTY_NOTE_DOCUMENT } from "@/lib/note-content";
+import type { NoteDocument } from "@/types/note.types";
 import {
   validateCreateNoteInput,
   validateListNotesQuery,
@@ -11,6 +13,26 @@ const NOTE_ID = "11111111-1111-1111-1111-111111111111";
 const PROJECT_ID = "22222222-2222-2222-2222-222222222222";
 const TAG_ID = "33333333-3333-3333-3333-333333333333";
 const TITLE_MAX_LENGTH = 255;
+
+const content: NoteDocument = {
+  type: "doc",
+  content: [
+    {
+      type: "paragraph",
+      content: [
+        { type: "text", text: "Hello " },
+        {
+          type: "text",
+          text: "world",
+          marks: [
+            { type: "bold" },
+            { type: "textStyle", attrs: { fontSize: "18px" } },
+          ],
+        },
+      ],
+    },
+  ],
+};
 
 function captureApiError(run: () => unknown): ApiError {
   try {
@@ -33,7 +55,7 @@ describe("validateCreateNoteInput", () => {
       title: "Shopping",
       description: null,
       project_id: null,
-      sections: [],
+      content: EMPTY_NOTE_DOCUMENT,
     });
   });
 
@@ -48,7 +70,7 @@ describe("validateCreateNoteInput", () => {
       title: "Shopping",
       description: "Weekly groceries",
       project_id: PROJECT_ID,
-      sections: [],
+      content: EMPTY_NOTE_DOCUMENT,
     });
   });
 
@@ -63,7 +85,7 @@ describe("validateCreateNoteInput", () => {
       title: "Shopping",
       description: null,
       project_id: null,
-      sections: [],
+      content: EMPTY_NOTE_DOCUMENT,
     });
   });
 
@@ -79,37 +101,19 @@ describe("validateCreateNoteInput", () => {
     expect(validateCreateNoteInput({ title })).toMatchObject({ title });
   });
 
-  it("accepts sections and assigns sequential orders when omitted", () => {
+  it("accepts a rich-text document", () => {
     expect(
-      validateCreateNoteInput({
-        title: "Shopping",
-        sections: [{ content: "Milk" }, { content: null }, { content: "" }],
-      }),
-    ).toEqual({
-      title: "Shopping",
-      description: null,
-      project_id: null,
-      sections: [
-        { content: "Milk", note_order: 1 },
-        { content: null, note_order: 2 },
-        { content: "", note_order: 3 },
-      ],
-    });
+      validateCreateNoteInput({ title: "Shopping", content }),
+    ).toMatchObject({ content });
   });
 
-  it("keeps explicit section orders", () => {
+  it("accepts an empty content array", () => {
     expect(
       validateCreateNoteInput({
         title: "Shopping",
-        sections: [
-          { content: "Milk", note_order: 5 },
-          { content: "Bread" },
-        ],
-      }).sections,
-    ).toEqual([
-      { content: "Milk", note_order: 5 },
-      { content: "Bread", note_order: 2 },
-    ]);
+        content: { type: "doc", content: [] },
+      }).content,
+    ).toEqual({ type: "doc", content: [] });
   });
 
   it("rejects a missing title", () => {
@@ -194,79 +198,233 @@ describe("validateCreateNoteInput", () => {
     ]);
   });
 
-  it.each([null, "sections", 42, {}])(
-    "rejects the non-array sections %j",
-    (sections) => {
+  it.each([null, 42, true, [], "doc"])(
+    "rejects the non-object content %j",
+    (value) => {
       const error = captureApiError(() =>
-        validateCreateNoteInput({ title: "Shopping", sections }),
+        validateCreateNoteInput({ title: "Shopping", content: value }),
       );
 
       expect(error.details).toEqual([
-        { field: "sections", message: "Must be an array" },
+        { field: "content", message: "Must be an object" },
       ]);
     },
   );
 
-  it("rejects a non-object section", () => {
-    const error = captureApiError(() =>
-      validateCreateNoteInput({ title: "Shopping", sections: ["Milk"] }),
-    );
-
-    expect(error.details).toEqual([
-      { field: "sections[0]", message: "Must be an object" },
-    ]);
-  });
-
-  it("rejects unknown section fields and reports their path", () => {
+  it("rejects a document with the wrong root type", () => {
     const error = captureApiError(() =>
       validateCreateNoteInput({
         title: "Shopping",
-        sections: [{ content: "Milk", note_id: NOTE_ID }],
+        content: { type: "paragraph", content: [] },
       }),
     );
 
     expect(error.details).toEqual([
-      { field: "note_id", message: "Unknown field" },
+      { field: "content.type", message: 'Must be "doc"' },
     ]);
   });
 
-  it.each([42, true, [], {}])(
-    "rejects the non-string section content %j",
-    (content) => {
-      const error = captureApiError(() =>
-        validateCreateNoteInput({
-          title: "Shopping",
-          sections: [{ content }],
-        }),
-      );
+  it("rejects a document without a content array", () => {
+    const error = captureApiError(() =>
+      validateCreateNoteInput({
+        title: "Shopping",
+        content: { type: "doc" },
+      }),
+    );
 
-      expect(error.details).toEqual([
-        {
-          field: "sections[0].content",
-          message: "Must be a string or null",
+    expect(error.details).toEqual([
+      { field: "content.content", message: "Must be an array" },
+    ]);
+  });
+
+  it("rejects a non-object node", () => {
+    const error = captureApiError(() =>
+      validateCreateNoteInput({
+        title: "Shopping",
+        content: { type: "doc", content: ["Milk"] },
+      }),
+    );
+
+    expect(error.details).toEqual([
+      { field: "content.content[0]", message: "Must be an object" },
+    ]);
+  });
+
+  it("rejects a node with an empty type", () => {
+    const error = captureApiError(() =>
+      validateCreateNoteInput({
+        title: "Shopping",
+        content: { type: "doc", content: [{ type: "  " }] },
+      }),
+    );
+
+    expect(error.details).toEqual([
+      {
+        field: "content.content[0].type",
+        message: "Must be a non-empty string",
+      },
+    ]);
+  });
+
+  it("rejects a text node without text", () => {
+    const error = captureApiError(() =>
+      validateCreateNoteInput({
+        title: "Shopping",
+        content: { type: "doc", content: [{ type: "text" }] },
+      }),
+    );
+
+    expect(error.details).toEqual([
+      {
+        field: "content.content[0].text",
+        message: "Is required for text nodes",
+      },
+    ]);
+  });
+
+  it("rejects a non-string text value", () => {
+    const error = captureApiError(() =>
+      validateCreateNoteInput({
+        title: "Shopping",
+        content: { type: "doc", content: [{ type: "text", text: 42 }] },
+      }),
+    );
+
+    expect(error.details).toEqual([
+      { field: "content.content[0].text", message: "Must be a string" },
+    ]);
+  });
+
+  it("rejects non-object attrs", () => {
+    const error = captureApiError(() =>
+      validateCreateNoteInput({
+        title: "Shopping",
+        content: {
+          type: "doc",
+          content: [{ type: "paragraph", attrs: 42 }],
         },
-      ]);
-    },
-  );
+      }),
+    );
 
-  it.each([0, -1, 1.5, "2", null, true])(
-    "rejects the invalid note_order %j",
-    (note_order) => {
-      const error = captureApiError(() =>
-        validateCreateNoteInput({
-          title: "Shopping",
-          sections: [{ content: "Milk", note_order }],
-        }),
-      );
+    expect(error.details).toEqual([
+      { field: "content.content[0].attrs", message: "Must be an object" },
+    ]);
+  });
 
-      expect(error.details).toEqual([
-        {
-          field: "sections[0].note_order",
-          message: "Must be a positive integer",
+  it("rejects a non-array node content", () => {
+    const error = captureApiError(() =>
+      validateCreateNoteInput({
+        title: "Shopping",
+        content: {
+          type: "doc",
+          content: [{ type: "paragraph", content: "Milk" }],
         },
-      ]);
-    },
-  );
+      }),
+    );
+
+    expect(error.details).toEqual([
+      {
+        field: "content.content[0].content",
+        message: "Must be an array",
+      },
+    ]);
+  });
+
+  it("validates nested nodes recursively", () => {
+    const error = captureApiError(() =>
+      validateCreateNoteInput({
+        title: "Shopping",
+        content: {
+          type: "doc",
+          content: [
+            {
+              type: "paragraph",
+              content: [{ type: "text", text: 42 }],
+            },
+          ],
+        },
+      }),
+    );
+
+    expect(error.details).toEqual([
+      {
+        field: "content.content[0].content[0].text",
+        message: "Must be a string",
+      },
+    ]);
+  });
+
+  it("rejects a non-array marks value", () => {
+    const error = captureApiError(() =>
+      validateCreateNoteInput({
+        title: "Shopping",
+        content: {
+          type: "doc",
+          content: [{ type: "text", text: "Hi", marks: {} }],
+        },
+      }),
+    );
+
+    expect(error.details).toEqual([
+      { field: "content.content[0].marks", message: "Must be an array" },
+    ]);
+  });
+
+  it("rejects a non-object mark", () => {
+    const error = captureApiError(() =>
+      validateCreateNoteInput({
+        title: "Shopping",
+        content: {
+          type: "doc",
+          content: [{ type: "text", text: "Hi", marks: ["bold"] }],
+        },
+      }),
+    );
+
+    expect(error.details).toEqual([
+      { field: "content.content[0].marks[0]", message: "Must be an object" },
+    ]);
+  });
+
+  it("rejects a mark without a type", () => {
+    const error = captureApiError(() =>
+      validateCreateNoteInput({
+        title: "Shopping",
+        content: {
+          type: "doc",
+          content: [{ type: "text", text: "Hi", marks: [{ attrs: {} }] }],
+        },
+      }),
+    );
+
+    expect(error.details).toEqual([
+      {
+        field: "content.content[0].marks[0].type",
+        message: "Must be a non-empty string",
+      },
+    ]);
+  });
+
+  it("rejects non-object mark attrs", () => {
+    const error = captureApiError(() =>
+      validateCreateNoteInput({
+        title: "Shopping",
+        content: {
+          type: "doc",
+          content: [
+            { type: "text", text: "Hi", marks: [{ type: "bold", attrs: 1 }] },
+          ],
+        },
+      }),
+    );
+
+    expect(error.details).toEqual([
+      {
+        field: "content.content[0].marks[0].attrs",
+        message: "Must be an object",
+      },
+    ]);
+  });
 
   it("rejects unknown top-level fields", () => {
     const error = captureApiError(() =>
@@ -284,7 +442,7 @@ describe("validateCreateNoteInput", () => {
         title: "",
         description: 42,
         project_id: "nope",
-        sections: [{ content: 1, note_order: 0 }],
+        content: { type: "doc", content: [{ type: "text" }] },
         extra: true,
       }),
     );
@@ -295,12 +453,8 @@ describe("validateCreateNoteInput", () => {
       { field: "description", message: "Must be a string or null" },
       { field: "project_id", message: "Must be a valid UUID" },
       {
-        field: "sections[0].content",
-        message: "Must be a string or null",
-      },
-      {
-        field: "sections[0].note_order",
-        message: "Must be a positive integer",
+        field: "content.content[0].text",
+        message: "Is required for text nodes",
       },
     ]);
   });
@@ -348,14 +502,24 @@ describe("validateUpdateNoteInput", () => {
     });
   });
 
+  it("accepts a rich-text document", () => {
+    expect(validateUpdateNoteInput({ content })).toEqual({ content });
+  });
+
   it("accepts multiple fields", () => {
     expect(
       validateUpdateNoteInput({
         title: "Shopping",
         description: null,
         project_id: null,
+        content,
       }),
-    ).toEqual({ title: "Shopping", description: null, project_id: null });
+    ).toEqual({
+      title: "Shopping",
+      description: null,
+      project_id: null,
+      content,
+    });
   });
 
   it("rejects an empty body", () => {
@@ -388,6 +552,31 @@ describe("validateUpdateNoteInput", () => {
 
     expect(error.details).toEqual([
       { field: "sections", message: "Unknown field" },
+    ]);
+  });
+
+  it("rejects null content", () => {
+    const error = captureApiError(() =>
+      validateUpdateNoteInput({ content: null }),
+    );
+
+    expect(error.details).toEqual([
+      { field: "content", message: "Must be an object" },
+    ]);
+  });
+
+  it("rejects an invalid document", () => {
+    const error = captureApiError(() =>
+      validateUpdateNoteInput({
+        content: { type: "doc", content: [{ type: "text" }] },
+      }),
+    );
+
+    expect(error.details).toEqual([
+      {
+        field: "content.content[0].text",
+        message: "Is required for text nodes",
+      },
     ]);
   });
 

@@ -1,5 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { ApiError } from "@/lib/api/errors";
+import { EMPTY_NOTE_DOCUMENT } from "@/lib/note-content";
+import type { NoteDocument } from "@/types/note.types";
 
 const mocks = vi.hoisted(() => {
   const prisma = {
@@ -41,7 +43,6 @@ const USER_ID = "11111111-1111-1111-1111-111111111111";
 const NOTE_ID = "22222222-2222-2222-2222-222222222222";
 const PROJECT_ID = "33333333-3333-3333-3333-333333333333";
 const TAG_ID = "44444444-4444-4444-4444-444444444444";
-const SECTION_ID = "55555555-5555-5555-5555-555555555555";
 
 const createdAt = new Date("2026-01-01T10:00:00.000Z");
 
@@ -54,14 +55,27 @@ const note = {
   updated_at: null,
 };
 
-const section = {
-  id: SECTION_ID,
-  note_id: NOTE_ID,
-  note_order: 1,
-  content: "Milk",
-  created_at: createdAt,
-  updated_at: null,
+const content: NoteDocument = {
+  type: "doc",
+  content: [
+    {
+      type: "paragraph",
+      content: [
+        { type: "text", text: "Hello " },
+        {
+          type: "text",
+          text: "world",
+          marks: [
+            { type: "bold" },
+            { type: "textStyle", attrs: { fontSize: "18px" } },
+          ],
+        },
+      ],
+    },
+  ],
 };
+
+const contentText = "Hello world";
 
 const NOTE_SELECT = {
   id: true,
@@ -72,21 +86,14 @@ const NOTE_SELECT = {
   updated_at: true,
 };
 
-const SECTION_SELECT = {
-  id: true,
-  note_id: true,
-  note_order: true,
-  content: true,
-  created_at: true,
-  updated_at: true,
-};
-
 const NOTE_DETAIL_SELECT = {
   ...NOTE_SELECT,
-  note_section: {
-    select: SECTION_SELECT,
-    orderBy: [{ note_order: "asc" }, { id: "asc" }],
-  },
+  content_json: true,
+};
+
+const noteDetailRow = {
+  ...note,
+  content_json: content,
 };
 
 async function captureApiError(promise: Promise<unknown>): Promise<ApiError> {
@@ -141,7 +148,7 @@ describe("listNotes", () => {
     });
   });
 
-  it("searches titles and descriptions case-insensitively", async () => {
+  it("searches titles, descriptions and body text case-insensitively", async () => {
     await listNotes(
       "access-token",
       new URLSearchParams({ search: "  milk  " }),
@@ -153,6 +160,7 @@ describe("listNotes", () => {
         OR: [
           { title: { contains: "milk", mode: "insensitive" } },
           { description: { contains: "milk", mode: "insensitive" } },
+          { content_text: { contains: "milk", mode: "insensitive" } },
         ],
       },
       orderBy: [{ created_at: "desc" }, { id: "desc" }],
@@ -204,6 +212,7 @@ describe("listNotes", () => {
           OR: [
             { title: { contains: "milk", mode: "insensitive" } },
             { description: { contains: "milk", mode: "insensitive" } },
+            { content_text: { contains: "milk", mode: "insensitive" } },
           ],
         },
       }),
@@ -327,11 +336,8 @@ describe("listNotes", () => {
 });
 
 describe("getNote", () => {
-  it("returns a note with its sections ordered by note_order", async () => {
-    mocks.prisma.notes.findFirst.mockResolvedValue({
-      ...note,
-      note_section: [section],
-    });
+  it("returns a note with its content", async () => {
+    mocks.prisma.notes.findFirst.mockResolvedValue(noteDetailRow);
 
     const result = await getNote("access-token", NOTE_ID);
 
@@ -340,18 +346,18 @@ describe("getNote", () => {
       where: { id: NOTE_ID, user_id: USER_ID },
       select: NOTE_DETAIL_SELECT,
     });
-    expect(result).toEqual({ ...note, sections: [section] });
+    expect(result).toEqual({ ...note, content });
   });
 
-  it("returns an empty sections array", async () => {
+  it("returns an empty document for a note with no content", async () => {
     mocks.prisma.notes.findFirst.mockResolvedValue({
       ...note,
-      note_section: [],
+      content_json: EMPTY_NOTE_DOCUMENT,
     });
 
     const result = await getNote("access-token", NOTE_ID);
 
-    expect(result.sections).toEqual([]);
+    expect(result.content).toEqual(EMPTY_NOTE_DOCUMENT);
   });
 
   it("rejects a missing note", async () => {
@@ -385,11 +391,11 @@ describe("createNote", () => {
   beforeEach(() => {
     mocks.prisma.notes.create.mockResolvedValue({
       ...note,
-      note_section: [],
+      content_json: EMPTY_NOTE_DOCUMENT,
     });
   });
 
-  it("creates a note with null optional fields and no sections", async () => {
+  it("creates a note with null optional fields and an empty document", async () => {
     const result = await createNote("access-token", { title: "Shopping" });
 
     expect(mocks.getAuthenticatedUserId).toHaveBeenCalledWith("access-token");
@@ -400,10 +406,12 @@ describe("createNote", () => {
         project_id: null,
         title: "Shopping",
         description: null,
+        content_json: EMPTY_NOTE_DOCUMENT,
+        content_text: "",
       },
       select: NOTE_DETAIL_SELECT,
     });
-    expect(result).toEqual({ ...note, sections: [] });
+    expect(result).toEqual({ ...note, content: EMPTY_NOTE_DOCUMENT });
   });
 
   it("trims the title", async () => {
@@ -435,20 +443,19 @@ describe("createNote", () => {
         project_id: PROJECT_ID,
         title: "Shopping",
         description: "Weekly groceries",
+        content_json: EMPTY_NOTE_DOCUMENT,
+        content_text: "",
       },
       select: NOTE_DETAIL_SELECT,
     });
   });
 
-  it("creates the note and its sections in one nested write", async () => {
-    mocks.prisma.notes.create.mockResolvedValue({
-      ...note,
-      note_section: [section],
-    });
+  it("stores the document and its derived plain text", async () => {
+    mocks.prisma.notes.create.mockResolvedValue(noteDetailRow);
 
     const result = await createNote("access-token", {
       title: "Shopping",
-      sections: [{ content: "Milk" }, { content: null }],
+      content,
     });
 
     expect(mocks.prisma.notes.create).toHaveBeenCalledWith({
@@ -457,16 +464,12 @@ describe("createNote", () => {
         project_id: null,
         title: "Shopping",
         description: null,
-        note_section: {
-          create: [
-            { content: "Milk", note_order: 1 },
-            { content: null, note_order: 2 },
-          ],
-        },
+        content_json: content,
+        content_text: contentText,
       },
       select: NOTE_DETAIL_SELECT,
     });
-    expect(result.sections).toEqual([section]);
+    expect(result.content).toEqual(content);
   });
 
   it("rejects a missing or foreign project before writing to the database", async () => {
@@ -492,19 +495,19 @@ describe("createNote", () => {
     expect(mocks.prisma.notes.create).not.toHaveBeenCalled();
   });
 
-  it("rejects invalid sections before writing to the database", async () => {
+  it("rejects invalid content before writing to the database", async () => {
     const error = await captureApiError(
       createNote("access-token", {
         title: "Shopping",
-        sections: [{ note_order: 0 }],
+        content: { type: "doc", content: [{ type: "text" }] },
       }),
     );
 
     expect(error.code).toBe("VALIDATION_ERROR");
     expect(error.details).toEqual([
       {
-        field: "sections[0].note_order",
-        message: "Must be a positive integer",
+        field: "content.content[0].text",
+        message: "Is required for text nodes",
       },
     ]);
     expect(mocks.prisma.notes.create).not.toHaveBeenCalled();
@@ -549,6 +552,7 @@ describe("updateNote", () => {
     mocks.prisma.notes.findFirst.mockResolvedValue({
       ...note,
       title: "Groceries",
+      content_json: content,
     });
   });
 
@@ -564,9 +568,9 @@ describe("updateNote", () => {
     });
     expect(mocks.prisma.notes.findFirst).toHaveBeenCalledWith({
       where: { id: NOTE_ID, user_id: USER_ID },
-      select: NOTE_SELECT,
+      select: NOTE_DETAIL_SELECT,
     });
-    expect(result).toEqual({ ...note, title: "Groceries" });
+    expect(result).toEqual({ ...note, title: "Groceries", content });
   });
 
   it("updates only the description", async () => {
@@ -586,6 +590,19 @@ describe("updateNote", () => {
     expect(mocks.prisma.notes.updateMany).toHaveBeenCalledWith({
       where: { id: NOTE_ID, user_id: USER_ID },
       data: { description: null, updated_at: expect.any(Date) },
+    });
+  });
+
+  it("replaces the content and its derived plain text", async () => {
+    await updateNote("access-token", NOTE_ID, { content });
+
+    expect(mocks.prisma.notes.updateMany).toHaveBeenCalledWith({
+      where: { id: NOTE_ID, user_id: USER_ID },
+      data: {
+        content_json: content,
+        content_text: contentText,
+        updated_at: expect.any(Date),
+      },
     });
   });
 

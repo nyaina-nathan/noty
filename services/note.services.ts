@@ -1,5 +1,6 @@
 import type { Prisma } from "@/prisma/generated/client";
 import { ApiError } from "@/lib/api/errors";
+import { noteDocumentToText } from "@/lib/note-content";
 import { prisma } from "@/lib/prisma";
 import { getAuthenticatedUserId } from "@/services/auth.services";
 import type { Paginated } from "@/types/api.types";
@@ -8,6 +9,7 @@ import type {
   ListNotesQuery,
   Note,
   NoteDetail,
+  NoteDocument,
   UpdateNoteInput,
 } from "@/types/note.types";
 import {
@@ -29,36 +31,26 @@ const NOTE_SELECT = {
   updated_at: true,
 } as const;
 
-const SECTION_SELECT = {
-  id: true,
-  note_id: true,
-  note_order: true,
-  content: true,
-  created_at: true,
-  updated_at: true,
-} as const;
-
-const SECTION_ORDER_BY = [
-  { note_order: "asc" },
-  { id: "asc" },
-] satisfies Prisma.note_sectionOrderByWithRelationInput[];
-
 const NOTE_DETAIL_SELECT = {
   ...NOTE_SELECT,
-  note_section: {
-    select: SECTION_SELECT,
-    orderBy: SECTION_ORDER_BY,
-  },
+  content_json: true,
 } satisfies Prisma.notesSelect;
 
 type NoteDetailRow = Prisma.notesGetPayload<{
   select: typeof NOTE_DETAIL_SELECT;
 }>;
 
-function toNoteDetail(note: NoteDetailRow): NoteDetail {
-  const { note_section, ...rest } = note;
+function toInputJson(content: NoteDocument): Prisma.InputJsonValue {
+  return content as unknown as Prisma.InputJsonValue;
+}
 
-  return { ...rest, sections: note_section };
+function toNoteDetail(note: NoteDetailRow): NoteDetail {
+  const { content_json, ...rest } = note;
+
+  return {
+    ...rest,
+    content: content_json as unknown as NoteDocument,
+  };
 }
 
 async function assertProjectOwnedByUser(
@@ -97,6 +89,12 @@ export async function listNotes(
             },
             {
               description: {
+                contains: query.search,
+                mode: "insensitive" as const,
+              },
+            },
+            {
+              content_text: {
                 contains: query.search,
                 mode: "insensitive" as const,
               },
@@ -169,16 +167,8 @@ export async function createNote(
       project_id: input.project_id,
       title: input.title,
       description: input.description,
-      ...(input.sections.length > 0
-        ? {
-            note_section: {
-              create: input.sections.map((section) => ({
-                content: section.content,
-                note_order: section.note_order,
-              })),
-            },
-          }
-        : {}),
+      content_json: toInputJson(input.content),
+      content_text: noteDocumentToText(input.content),
     },
     select: NOTE_DETAIL_SELECT,
   });
@@ -190,7 +180,7 @@ export async function updateNote(
   accessToken: string | undefined,
   noteId: string,
   body: unknown,
-): Promise<Note> {
+): Promise<NoteDetail> {
   const userId = await getAuthenticatedUserId(accessToken);
   const id = validateNoteId(noteId);
   const input: UpdateNoteInput = validateUpdateNoteInput(body);
@@ -215,6 +205,11 @@ export async function updateNote(
     data.project_id = input.project_id ?? null;
   }
 
+  if (input.content !== undefined) {
+    data.content_json = toInputJson(input.content);
+    data.content_text = noteDocumentToText(input.content);
+  }
+
   const updated = await prisma.notes.updateMany({
     where: { id, user_id: userId },
     data,
@@ -226,14 +221,14 @@ export async function updateNote(
 
   const note = await prisma.notes.findFirst({
     where: { id, user_id: userId },
-    select: NOTE_SELECT,
+    select: NOTE_DETAIL_SELECT,
   });
 
   if (!note) {
     throw ApiError.notFound(NOTE_NOT_FOUND);
   }
 
-  return note;
+  return toNoteDetail(note);
 }
 
 export async function deleteNote(

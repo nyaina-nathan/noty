@@ -99,7 +99,7 @@ export function NoteDetailView({ noteId }: { noteId: string }) {
         return;
       }
 
-      const draft = toDraft(result.data.sections);
+      const draft = toDraft(result.data.sections ?? []);
 
       setView({
         key,
@@ -364,7 +364,7 @@ export function NoteDetailView({ noteId }: { noteId: string }) {
       return;
     }
 
-    const draft = toDraft(refreshed.data.sections);
+    const draft = toDraft(refreshed.data.sections ?? []);
 
     setView({
       key,

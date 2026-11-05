@@ -4,8 +4,8 @@ import {
   DEFAULT_PER_PAGE,
   MAX_PER_PAGE,
   SEARCH_MAX_LENGTH,
-  isUuid,
   isRecord,
+  isUuid,
   parsePositiveInteger,
   readNullableString,
   readString,
@@ -13,23 +13,18 @@ import {
   requireObject,
   throwIfInvalid,
 } from "@/lib/api/validation";
+import { EMPTY_NOTE_DOCUMENT } from "@/lib/note-content";
 import type {
   CreateNoteInput,
   ListNotesQuery,
-  NoteSectionInput,
+  NoteDocument,
   NoteSortField,
   UpdateNoteInput,
 } from "@/types/note.types";
 
 const NOTE_TITLE_MAX_LENGTH = 255;
-const NOTE_FIELDS = ["title", "description", "project_id"] as const;
-const CREATE_NOTE_FIELDS = [
-  "title",
-  "description",
-  "project_id",
-  "sections",
-] as const;
-const SECTION_FIELDS = ["content", "note_order"] as const;
+const NOTE_FIELDS = ["title", "description", "project_id", "content"] as const;
+const CREATE_NOTE_FIELDS = NOTE_FIELDS;
 const NOTE_SORT_FIELDS: readonly NoteSortField[] = [
   "created_at",
   "updated_at",
@@ -69,91 +64,132 @@ function readProjectId(
   return rawProjectId;
 }
 
-function readNoteOrder(
+function validateMark(
   value: unknown,
   field: string,
   details: ErrorDetail[],
-): number | undefined {
-  if (value === undefined) {
-    return undefined;
-  }
-
-  if (typeof value !== "number" || !Number.isInteger(value) || value < 1) {
-    details.push({ field, message: "Must be a positive integer" });
-    return undefined;
-  }
-
-  return value;
-}
-
-function readSectionContent(
-  value: Record<string, unknown>,
-  field: string,
-  details: ErrorDetail[],
-): string | null {
-  const content = value.content;
-
-  if (content === undefined || content === null) {
-    return null;
-  }
-
-  if (typeof content !== "string") {
-    details.push({
-      field: `${field}.content`,
-      message: "Must be a string or null",
-    });
-    return null;
-  }
-
-  return content;
-}
-
-function validateSectionInput(
-  value: unknown,
-  index: number,
-  details: ErrorDetail[],
-): NoteSectionInput {
-  const field = `sections[${index}]`;
-  const defaultOrder = index + 1;
-
+): void {
   if (!isRecord(value)) {
     details.push({ field, message: "Must be an object" });
-    return { content: null, note_order: defaultOrder };
+    return;
   }
 
-  rejectUnknownFields(value, SECTION_FIELDS, details);
+  if (typeof value.type !== "string" || value.type.trim().length === 0) {
+    details.push({
+      field: `${field}.type`,
+      message: "Must be a non-empty string",
+    });
+  }
 
-  const content = readSectionContent(value, field, details);
-  const noteOrder = readNoteOrder(
-    value.note_order,
-    `${field}.note_order`,
-    details,
-  );
-
-  return {
-    content,
-    note_order: noteOrder ?? defaultOrder,
-  };
+  if (value.attrs !== undefined && !isRecord(value.attrs)) {
+    details.push({
+      field: `${field}.attrs`,
+      message: "Must be an object",
+    });
+  }
 }
 
-function validateSections(
+function validateNode(
+  value: unknown,
+  field: string,
+  details: ErrorDetail[],
+): void {
+  if (!isRecord(value)) {
+    details.push({ field, message: "Must be an object" });
+    return;
+  }
+
+  const type = value.type;
+
+  if (typeof type !== "string" || type.trim().length === 0) {
+    details.push({
+      field: `${field}.type`,
+      message: "Must be a non-empty string",
+    });
+  }
+
+  if (value.text !== undefined) {
+    if (typeof value.text !== "string") {
+      details.push({
+        field: `${field}.text`,
+        message: "Must be a string",
+      });
+    }
+  } else if (type === "text") {
+    details.push({
+      field: `${field}.text`,
+      message: "Is required for text nodes",
+    });
+  }
+
+  if (value.attrs !== undefined && !isRecord(value.attrs)) {
+    details.push({
+      field: `${field}.attrs`,
+      message: "Must be an object",
+    });
+  }
+
+  if (value.content !== undefined) {
+    if (!Array.isArray(value.content)) {
+      details.push({
+        field: `${field}.content`,
+        message: "Must be an array",
+      });
+    } else {
+      value.content.forEach((child, index) => {
+        validateNode(child, `${field}.content[${index}]`, details);
+      });
+    }
+  }
+
+  if (value.marks !== undefined) {
+    if (!Array.isArray(value.marks)) {
+      details.push({
+        field: `${field}.marks`,
+        message: "Must be an array",
+      });
+    } else {
+      value.marks.forEach((mark, index) => {
+        validateMark(mark, `${field}.marks[${index}]`, details);
+      });
+    }
+  }
+}
+
+function readNoteDocument(
+  value: unknown,
+  field: string,
+  details: ErrorDetail[],
+): NoteDocument | undefined {
+  if (!isRecord(value)) {
+    details.push({ field, message: "Must be an object" });
+    return undefined;
+  }
+
+  if (value.type !== "doc") {
+    details.push({ field: `${field}.type`, message: 'Must be "doc"' });
+  }
+
+  if (!Array.isArray(value.content)) {
+    details.push({ field: `${field}.content`, message: "Must be an array" });
+  } else {
+    value.content.forEach((node: unknown, index) => {
+      validateNode(node, `${field}.content[${index}]`, details);
+    });
+  }
+
+  return value as unknown as NoteDocument;
+}
+
+function readContent(
   input: Record<string, unknown>,
   details: ErrorDetail[],
-): NoteSectionInput[] {
-  const rawSections = input.sections;
-
-  if (rawSections === undefined) {
-    return [];
+): NoteDocument | undefined {
+  if (!Object.hasOwn(input, "content")) {
+    return undefined;
   }
 
-  if (!Array.isArray(rawSections)) {
-    details.push({ field: "sections", message: "Must be an array" });
-    return [];
-  }
-
-  return rawSections.map((section, index) =>
-    validateSectionInput(section, index, details),
-  );
+  return readNoteDocument(input.content, "content", details);
 }
 
 export function validateCreateNoteInput(body: unknown): CreateNoteInput {
@@ -167,11 +203,11 @@ export function validateCreateNoteInput(body: unknown): CreateNoteInput {
 
   const description = readNullableString(input, "description", details) ?? null;
   const projectId = readProjectId(input, details);
-  const sections = validateSections(input, details);
+  const content = readContent(input, details) ?? EMPTY_NOTE_DOCUMENT;
 
   throwIfInvalid(details);
 
-  return { title, description, project_id: projectId, sections };
+  return { title, description, project_id: projectId, content };
 }
 
 export function validateUpdateNoteInput(body: unknown): UpdateNoteInput {
@@ -208,6 +244,14 @@ export function validateUpdateNoteInput(body: unknown): UpdateNoteInput {
 
   if (Object.hasOwn(input, "project_id")) {
     result.project_id = readProjectId(input, details);
+  }
+
+  if (Object.hasOwn(input, "content")) {
+    const content = readContent(input, details);
+
+    if (content !== undefined) {
+      result.content = content;
+    }
   }
 
   throwIfInvalid(details);
