@@ -80,4 +80,85 @@
   .chip {
     @apply inline-flex items-center rounded-md bg-primary/10 px-2 py-0.5 font-mono text-[11px] font-medium text-primary-strong;
   }
+
+  .note-prose {
+    @apply text-[15px] leading-7 text-ink;
+  }
+
+  .note-prose > * + * {
+    margin-top: 0.75rem;
+  }
+
+  .note-prose h1 {
+    @apply font-display text-2xl font-semibold tracking-tight;
+    margin-top: 1.5rem;
+  }
+
+  .note-prose h2 {
+    @apply font-display text-xl font-semibold tracking-tight;
+    margin-top: 1.25rem;
+  }
+
+  .note-prose h3 {
+    @apply font-display text-lg font-semibold tracking-tight;
+    margin-top: 1rem;
+  }
+
+  .note-prose ul {
+    @apply list-disc pl-6;
+  }
+
+  .note-prose ol {
+    @apply list-decimal pl-6;
+  }
+
+  .note-prose li > p {
+    margin-top: 0;
+  }
+
+  .note-prose blockquote {
+    @apply border-l-2 border-primary/30 pl-4 text-muted;
+    font-style: italic;
+  }
+
+  .note-prose pre {
+    @apply overflow-x-auto rounded-lg bg-ink px-4 py-3 font-mono text-[13px] leading-6 text-white;
+  }
+
+  .note-prose code {
+    @apply rounded bg-mist px-1 py-0.5 font-mono text-[0.9em] text-ink;
+  }
+
+  .note-prose pre code {
+    @apply bg-transparent p-0 text-inherit;
+  }
+
+  .note-prose hr {
+    @apply my-6 border-line;
+  }
+
+  .note-prose a {
+    @apply text-primary-strong underline underline-offset-2;
+  }
+
+  .note-prose strong {
+    font-weight: 600;
+  }
+
+  .note-prose em {
+    font-style: italic;
+  }
+
+  .note-prose u {
+    text-decoration: underline;
+  }
+
+  .note-prose s {
+    text-decoration: line-through;
+  }
+
+  .note-prose .is-editor-empty:first-child::before {
+    @apply pointer-events-none float-left h-0 text-muted/40;
+    content: attr(data-placeholder);
+  }
 }

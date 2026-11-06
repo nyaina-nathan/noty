@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { EMPTY_NOTE_DOCUMENT, noteDocumentToText } from "@/lib/note-content";
+import {
+  EMPTY_NOTE_DOCUMENT,
+  noteDocumentsEqual,
+  noteDocumentToText,
+} from "@/lib/note-content";
 import type { NoteDocument } from "@/types/note.types";
 
 function doc(content: NoteDocument["content"]): NoteDocument {
@@ -152,5 +156,51 @@ describe("noteDocumentToText", () => {
         ]),
       ),
     ).toBe("\nAfter");
+  });
+});
+
+describe("noteDocumentsEqual", () => {
+  it("matches documents with reordered object keys", () => {
+    expect(
+      noteDocumentsEqual(
+        {
+          type: "doc",
+          content: [{ type: "paragraph", content: [{ type: "text", text: "Hi" }] }],
+        },
+        {
+          content: [
+            { content: [{ text: "Hi", type: "text" }], type: "paragraph" },
+          ],
+          type: "doc",
+        },
+      ),
+    ).toBe(true);
+  });
+
+  it("detects different text", () => {
+    expect(
+      noteDocumentsEqual(
+        doc([{ type: "paragraph", content: [{ type: "text", text: "Hi" }] }]),
+        doc([{ type: "paragraph", content: [{ type: "text", text: "Bye" }] }]),
+      ),
+    ).toBe(false);
+  });
+
+  it("detects different array lengths", () => {
+    expect(
+      noteDocumentsEqual(
+        doc([{ type: "paragraph" }]),
+        doc([{ type: "paragraph" }, { type: "paragraph" }]),
+      ),
+    ).toBe(false);
+  });
+
+  it("detects missing keys", () => {
+    expect(
+      noteDocumentsEqual(
+        { type: "doc", content: [] },
+        { type: "doc", content: [], extra: true },
+      ),
+    ).toBe(false);
   });
 });

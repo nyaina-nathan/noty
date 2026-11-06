@@ -125,7 +125,7 @@ export function NoteFormModal({
       description={
         note
           ? "Update the title, description, or the project this note belongs to."
-          : "Capture the idea now — sections can be added later."
+          : "Capture the idea now — you can start writing right after."
       }
       onClose={onClose}
     >
@@ -188,7 +188,7 @@ export function NoteFormModal({
               <p className="mt-1.5 text-sm text-muted">
                 {inheritedTag
                   ? `This note will be tagged “${inheritedTag.name}”.`
-                  : "The note is added to this project. Write its sections next."}
+                  : "The note is added to this project. Start writing next."}
               </p>
             </>
           ) : (

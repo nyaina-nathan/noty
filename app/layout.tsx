@@ -26,7 +26,7 @@ const inconsolata = Inconsolata({
 export const metadata: Metadata = {
   title: "noty — clear, organized notes",
   description:
-    "noty keeps every idea, draft, and reference in one calm place — sorted by project and section, tagged so you can find it later.",
+    "noty keeps every idea, draft, and reference in one calm place — organized by project, styled with rich text, and tagged so you can find it later.",
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {

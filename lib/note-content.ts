@@ -59,3 +59,39 @@ export function noteDocumentToText(document: NoteDocument): string {
 
   return lines.join("\n");
 }
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+/**
+ * Compares documents structurally. PostgreSQL `jsonb` reorders object keys, so
+ * a plain `JSON.stringify` comparison would report a change after every save.
+ */
+export function noteDocumentsEqual(left: unknown, right: unknown): boolean {
+  if (left === right) {
+    return true;
+  }
+
+  if (Array.isArray(left) && Array.isArray(right)) {
+    return (
+      left.length === right.length &&
+      left.every((value, index) => noteDocumentsEqual(value, right[index]))
+    );
+  }
+
+  if (isRecord(left) && isRecord(right)) {
+    const leftKeys = Object.keys(left);
+
+    if (leftKeys.length !== Object.keys(right).length) {
+      return false;
+    }
+
+    return leftKeys.every(
+      (key) =>
+        Object.hasOwn(right, key) && noteDocumentsEqual(left[key], right[key]),
+    );
+  }
+
+  return false;
+}

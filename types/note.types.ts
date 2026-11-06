@@ -28,23 +28,8 @@ export interface NoteDocument {
   [key: string]: unknown;
 }
 
-/**
- * @deprecated Notes now use a single rich-text document. Kept only so the
- * legacy section editor compiles until it is replaced.
- */
-export interface NoteSection {
-  id: string;
-  note_id: string;
-  note_order: number | null;
-  content: string | null;
-  created_at: Date | null;
-  updated_at: Date | null;
-}
-
 export interface NoteDetail extends Note {
   content: NoteDocument;
-  /** @deprecated Not returned by the API; remove with the legacy section editor. */
-  sections?: NoteSection[];
 }
 
 export interface CreateNoteInput {

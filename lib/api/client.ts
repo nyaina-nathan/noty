@@ -30,6 +30,8 @@ export type RequestOptions = {
   body?: unknown;
   /** Set to false to skip the one-time token refresh retry. Defaults to true. */
   allowRefresh?: boolean;
+  /** Keeps the request alive when the page is unloading. Defaults to false. */
+  keepalive?: boolean;
 };
 
 const REFRESH_URL = "/api/auth/refresh";
@@ -55,6 +57,7 @@ async function send<T>(
     response = await fetch(url, {
       method: options.method ?? "GET",
       credentials: "same-origin",
+      ...(options.keepalive ? { keepalive: true } : {}),
       ...(options.body !== undefined
         ? {
             headers: { "Content-Type": "application/json" },
