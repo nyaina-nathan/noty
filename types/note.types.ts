@@ -7,35 +7,43 @@ export interface Note {
   updated_at: Date | null;
 }
 
-export interface NoteSection {
-  id: string;
-  note_id: string;
-  note_order: number | null;
-  content: string | null;
-  created_at: Date | null;
-  updated_at: Date | null;
+export interface NoteMark {
+  type: string;
+  attrs?: Record<string, unknown>;
+  [key: string]: unknown;
+}
+
+export interface NoteNode {
+  type: string;
+  attrs?: Record<string, unknown>;
+  content?: NoteNode[];
+  marks?: NoteMark[];
+  text?: string;
+  [key: string]: unknown;
+}
+
+export interface NoteDocument {
+  type: "doc";
+  content: NoteNode[];
+  [key: string]: unknown;
 }
 
 export interface NoteDetail extends Note {
-  sections: NoteSection[];
-}
-
-export interface NoteSectionInput {
-  content: string | null;
-  note_order?: number;
+  content: NoteDocument;
 }
 
 export interface CreateNoteInput {
   title: string;
   description: string | null;
   project_id: string | null;
-  sections: NoteSectionInput[];
+  content: NoteDocument;
 }
 
 export interface UpdateNoteInput {
   title?: string;
   description?: string | null;
   project_id?: string | null;
+  content?: NoteDocument;
 }
 
 export type NoteSortField = "created_at" | "updated_at" | "title";

@@ -40,8 +40,6 @@ info:
 
     `page` defaults to `1`, `perPage` defaults to `20` and is capped at `100`.
     `totalPage` is `ceil(total / perPage)` and is `0` when there are no items.
-    The note sections endpoints are unpaginated and return a bare array of
-    sections ordered by `note_order`.
 
     ## Errors
     Errors share one envelope:
@@ -60,9 +58,7 @@ tags:
   - name: Projects
     description: Containers for notes, optionally linked to one tag.
   - name: Notes
-    description: Notes, optionally attached to a project.
-  - name: Note Sections
-    description: Ordered content blocks that make up a note.
+    description: Notes with rich-text content, optionally attached to a project.
 security:
   - cookieAuth: []
 paths:
@@ -510,7 +506,7 @@ paths:
             default: desc
       responses:
         '200':
-          description: A page of notes. Sections are not included.
+          description: A page of notes. Content is not included.
           content:
             application/json:
               schema:
@@ -524,9 +520,8 @@ paths:
       operationId: createNote
       summary: Create a note
       description: |
-        Creates a note and, when `sections` is provided, its sections in the
-        same transaction. Omitted `note_order` values are assigned
-        sequentially starting at `1`.
+        Creates a note. `content` is optional and defaults to an empty
+        rich-text document.
       requestBody:
         required: true
         content:
@@ -535,7 +530,7 @@ paths:
               $ref: '#/components/schemas/CreateNoteRequest'
       responses:
         '201':
-          description: Note created, including its sections.
+          description: Note created, including its content.
           content:
             application/json:
               schema:
@@ -549,12 +544,12 @@ paths:
       tags: [Notes]
       operationId: getNote
       summary: Get a note
-      description: Returns the note together with its sections ordered by `note_order`.
+      description: Returns the note with its rich-text content.
       parameters:
         - $ref: '#/components/parameters/NoteIdPath'
       responses:
         '200':
-          description: The note and its sections.
+          description: The note and its content.
           content:
             application/json:
               schema:
@@ -570,6 +565,7 @@ paths:
       description: |
         Omitted fields are unchanged. Send `project_id: null` to detach the
         note from its project and `description: null` to clear the description.
+        Sending `content` replaces the entire rich-text document.
       parameters:
         - $ref: '#/components/parameters/NoteIdPath'
       requestBody:
@@ -580,11 +576,11 @@ paths:
               $ref: '#/components/schemas/UpdateNoteRequest'
       responses:
         '200':
-          description: Updated note. Sections are not included.
+          description: Updated note, including its content.
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Note'
+                $ref: '#/components/schemas/NoteDetail'
         '401':
           $ref: '#/components/responses/Unauthorized'
         '404':
@@ -595,7 +591,7 @@ paths:
       tags: [Notes]
       operationId: deleteNote
       summary: Delete a note
-      description: Deletes the note and cascades to all of its sections.
+      description: Deletes the note.
       parameters:
         - $ref: '#/components/parameters/NoteIdPath'
       responses:
@@ -605,135 +601,6 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '404':
           $ref: '#/components/responses/NotFound'
-  /notes/{noteId}/sections:
-    get:
-      tags: [Note Sections]
-      operationId: listNoteSections
-      summary: List all sections of a note
-      description: |
-        Returns every section of the note without pagination, ordered by
-        `note_order` ascending by default.
-      parameters:
-        - $ref: '#/components/parameters/NoteIdPath'
-        - $ref: '#/components/parameters/Order'
-      responses:
-        '200':
-          description: All sections of the note.
-          content:
-            application/json:
-              schema:
-                type: array
-                items:
-                  $ref: '#/components/schemas/NoteSection'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '404':
-          $ref: '#/components/responses/NotFound'
-    post:
-      tags: [Note Sections]
-      operationId: createNoteSection
-      summary: Add a section to a note
-      description: |
-        Appends a section. When `note_order` is omitted it is set to one more
-        than the current highest `note_order` in the note.
-      parameters:
-        - $ref: '#/components/parameters/NoteIdPath'
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/CreateSectionRequest'
-      responses:
-        '201':
-          description: Section created.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/NoteSection'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '404':
-          $ref: '#/components/responses/NotFound'
-        '422':
-          $ref: '#/components/responses/UnprocessableEntity'
-  /notes/{noteId}/sections/{sectionId}:
-    patch:
-      tags: [Note Sections]
-      operationId: updateNoteSection
-      summary: Update a section
-      description: Omitted fields are unchanged; sending `content` as null clears the content.
-      parameters:
-        - $ref: '#/components/parameters/NoteIdPath'
-        - $ref: '#/components/parameters/SectionIdPath'
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/UpdateSectionRequest'
-      responses:
-        '200':
-          description: Updated section.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/NoteSection'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '404':
-          $ref: '#/components/responses/NotFound'
-        '422':
-          $ref: '#/components/responses/UnprocessableEntity'
-    delete:
-      tags: [Note Sections]
-      operationId: deleteNoteSection
-      summary: Delete a section
-      description: |
-        Deletes the section. Remaining `note_order` values are left as-is;
-        call the reorder endpoint to renumber them.
-      parameters:
-        - $ref: '#/components/parameters/NoteIdPath'
-        - $ref: '#/components/parameters/SectionIdPath'
-      responses:
-        '204':
-          description: Section deleted.
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '404':
-          $ref: '#/components/responses/NotFound'
-  /notes/{noteId}/sections/order:
-    put:
-      tags: [Note Sections]
-      operationId: reorderNoteSections
-      summary: Reorder sections
-      description: |
-        Replaces the order of every section in the note. `sectionIds` must
-        contain every section of the note exactly once; orders are rewritten
-        as `1..n` in the supplied order.
-      parameters:
-        - $ref: '#/components/parameters/NoteIdPath'
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/ReorderSectionsRequest'
-      responses:
-        '200':
-          description: All sections of the note in their new order.
-          content:
-            application/json:
-              schema:
-                type: array
-                items:
-                  $ref: '#/components/schemas/NoteSection'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '404':
-          $ref: '#/components/responses/NotFound'
-        '422':
-          $ref: '#/components/responses/UnprocessableEntity'
 components:
   securitySchemes:
     cookieAuth:
@@ -774,8 +641,9 @@ components:
       description: |
         Case-insensitive **substring** match (contains), not an exact match.
         Implemented as `ILIKE '%<value>%'`; partial words match. For tags it
-        searches `name`; for projects and notes it searches `title` and
-        `description`. An empty value applies no filter.
+        searches `name`; for projects it searches `title` and `description`;
+        for notes it searches `title`, `description`, and the plain-text body
+        (`content_text`). An empty value applies no filter.
       schema:
         type: string
         maxLength: 255
@@ -809,14 +677,6 @@ components:
       in: path
       required: true
       description: Note id.
-      schema:
-        type: string
-        format: uuid
-    SectionIdPath:
-      name: sectionId
-      in: path
-      required: true
-      description: Note section id.
       schema:
         type: string
         format: uuid
@@ -966,37 +826,80 @@ components:
       allOf:
         - $ref: '#/components/schemas/Note'
         - type: object
-          required: [sections]
+          required: [content]
           properties:
-            sections:
-              type: array
-              description: Sections of the note ordered by `note_order`.
-              items:
-                $ref: '#/components/schemas/NoteSection'
-    NoteSection:
+            content:
+              $ref: '#/components/schemas/NoteDocument'
+    NoteDocument:
       type: object
-      required: [id, note_id, note_order, created_at]
+      required: [type, content]
+      additionalProperties: true
+      description: |
+        Rich-text document in TipTap/ProseMirror JSON format. The server
+        derives the plain-text search projection (`content_text`) from the
+        document; clients never send or receive `content_text` directly.
       properties:
-        id:
+        type:
           type: string
-          format: uuid
-        note_id:
-          type: string
-          format: uuid
-        note_order:
-          type: integer
-          minimum: 1
+          enum: [doc]
         content:
+          type: array
+          items:
+            $ref: '#/components/schemas/NoteNode'
+      example:
+        type: doc
+        content:
+          - type: paragraph
+            content:
+              - type: text
+                text: "Hello "
+              - type: text
+                text: world
+                marks:
+                  - type: bold
+                  - type: textStyle
+                    attrs:
+                      fontSize: 18px
+    NoteNode:
+      type: object
+      required: [type]
+      additionalProperties: true
+      description: |
+        A TipTap/ProseMirror node. `text` is required when `type` is `text`.
+        Common block types include `paragraph`, `heading`, `bulletList`,
+        `orderedList`, `listItem`, `blockquote`, and `codeBlock`.
+      properties:
+        type:
           type: string
-          nullable: true
-        created_at:
+        attrs:
+          type: object
+          additionalProperties: true
+        content:
+          type: array
+          items:
+            $ref: '#/components/schemas/NoteNode'
+        marks:
+          type: array
+          items:
+            $ref: '#/components/schemas/NoteMark'
+        text:
           type: string
-          format: date-time
-          nullable: true
-        updated_at:
+    NoteMark:
+      type: object
+      required: [type]
+      additionalProperties: true
+      description: |
+        Inline formatting. Common types include `bold`, `italic`, `underline`,
+        `strike`, `code`, `link`, and `textStyle`.
+      properties:
+        type:
           type: string
-          format: date-time
-          nullable: true
+        attrs:
+          type: object
+          additionalProperties: true
+          description: |
+            Mark attributes. For example `textStyle` uses `{ "fontSize": "18px" }`
+            and `link` uses `{ "href": "https://example.com" }`.
     PaginationMeta:
       type: object
       required: [page, perPage, total, totalPage]
@@ -1189,16 +1092,6 @@ components:
           type: string
           format: uuid
           nullable: true
-    SectionInput:
-      type: object
-      additionalProperties: false
-      properties:
-        content:
-          type: string
-          nullable: true
-        note_order:
-          type: integer
-          minimum: 1
     CreateNoteRequest:
       type: object
       required: [title]
@@ -1215,10 +1108,12 @@ components:
           type: string
           format: uuid
           nullable: true
-        sections:
-          type: array
-          items:
-            $ref: '#/components/schemas/SectionInput'
+        content:
+          description: |
+            Optional rich-text document. When omitted, the note is created with
+            an empty document.
+          allOf:
+            - $ref: '#/components/schemas/NoteDocument'
     UpdateNoteRequest:
       type: object
       minProperties: 1
@@ -1235,37 +1130,9 @@ components:
           type: string
           format: uuid
           nullable: true
-    CreateSectionRequest:
-      type: object
-      additionalProperties: false
-      properties:
         content:
-          type: string
-          nullable: true
-        note_order:
-          type: integer
-          minimum: 1
-    UpdateSectionRequest:
-      type: object
-      minProperties: 1
-      additionalProperties: false
-      properties:
-        content:
-          type: string
-          nullable: true
-        note_order:
-          type: integer
-          minimum: 1
-    ReorderSectionsRequest:
-      type: object
-      required: [sectionIds]
-      additionalProperties: false
-      properties:
-        sectionIds:
-          type: array
-          minItems: 1
-          uniqueItems: true
-          description: Every section id of the note, in the desired order.
-          items:
-            type: string
-            format: uuid
+          description: |
+            Replaces the entire rich-text document. Omit it to leave the
+            content unchanged.
+          allOf:
+            - $ref: '#/components/schemas/NoteDocument'

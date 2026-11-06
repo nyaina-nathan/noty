@@ -127,24 +127,111 @@ export function LogOutIcon(props: IconProps) {
   );
 }
 
-export function GripIcon(props: IconProps) {
-  return (
-    <svg {...iconProps(props)}>
-      <circle cx="9" cy="6" r="1" />
-      <circle cx="15" cy="6" r="1" />
-      <circle cx="9" cy="12" r="1" />
-      <circle cx="15" cy="12" r="1" />
-      <circle cx="9" cy="18" r="1" />
-      <circle cx="15" cy="18" r="1" />
-    </svg>
-  );
-}
-
 export function AlertIcon(props: IconProps) {
   return (
     <svg {...iconProps(props)}>
       <path d="M12 4 2.8 19a1 1 0 0 0 .9 1.5h16.6a1 1 0 0 0 .9-1.5L12 4Z" />
       <path d="M12 10v4M12 17.5v.01" />
+    </svg>
+  );
+}
+
+export function BoldIcon(props: IconProps) {
+  return (
+    <svg {...iconProps(props)}>
+      <path d="M7 5h6a4 4 0 0 1 0 8H7V5Z" />
+      <path d="M7 13h7a4 4 0 0 1 0 8H7v-8Z" />
+    </svg>
+  );
+}
+
+export function ItalicIcon(props: IconProps) {
+  return (
+    <svg {...iconProps(props)}>
+      <path d="M10 5h7M7 19h7M14 5l-4 14" />
+    </svg>
+  );
+}
+
+export function UnderlineIcon(props: IconProps) {
+  return (
+    <svg {...iconProps(props)}>
+      <path d="M7 5v7a5 5 0 0 0 10 0V5" />
+      <path d="M5 21h14" />
+    </svg>
+  );
+}
+
+export function StrikethroughIcon(props: IconProps) {
+  return (
+    <svg {...iconProps(props)}>
+      <path d="M5 12h14" />
+      <path d="M8 8a4 4 0 0 1 8 0" />
+      <path d="M8 16a4 4 0 0 0 8 0" />
+    </svg>
+  );
+}
+
+export function BulletListIcon(props: IconProps) {
+  return (
+    <svg {...iconProps(props)}>
+      <path d="M9 6h11M9 12h11M9 18h11" />
+      <circle cx="4.5" cy="6" r="1" />
+      <circle cx="4.5" cy="12" r="1" />
+      <circle cx="4.5" cy="18" r="1" />
+    </svg>
+  );
+}
+
+export function OrderedListIcon(props: IconProps) {
+  return (
+    <svg {...iconProps(props)}>
+      <path d="M10 6h10M10 12h10M10 18h10" />
+      <path d="M4 5h1v4M3 9h3M4 14h2l-2 3h2" />
+    </svg>
+  );
+}
+
+export function QuoteIcon(props: IconProps) {
+  return (
+    <svg {...iconProps(props)}>
+      <path d="M5 11h4V7H5v4Zm0 0c0 3 1.5 5 4 6" />
+      <path d="M15 11h4V7h-4v4Zm0 0c0 3 1.5 5 4 6" />
+    </svg>
+  );
+}
+
+export function CodeBlockIcon(props: IconProps) {
+  return (
+    <svg {...iconProps(props)}>
+      <path d="m8 8-4 4 4 4M16 8l4 4-4 4" />
+    </svg>
+  );
+}
+
+export function UndoIcon(props: IconProps) {
+  return (
+    <svg {...iconProps(props)}>
+      <path d="m8 7-5 5 5 5" />
+      <path d="M3 12h10a5 5 0 0 1 5 5" />
+    </svg>
+  );
+}
+
+export function RedoIcon(props: IconProps) {
+  return (
+    <svg {...iconProps(props)}>
+      <path d="m16 7 5 5-5 5" />
+      <path d="M21 12H11a5 5 0 0 0-5 5" />
+    </svg>
+  );
+}
+
+export function EraserIcon(props: IconProps) {
+  return (
+    <svg {...iconProps(props)}>
+      <path d="m4 15 7-7a2 2 0 0 1 3 0l4 4a2 2 0 0 1 0 3l-4 4H8l-4-4Z" />
+      <path d="m9 9 7 7" />
     </svg>
   );
 }

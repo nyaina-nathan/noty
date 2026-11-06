@@ -840,6 +840,7 @@ describe("DELETE /api/projects/{projectId}", () => {
         user_id: user.id,
         project_id: project.id,
         title: "Note",
+        content_json: { type: "doc", content: [{ type: "paragraph" }] },
       },
     });
 

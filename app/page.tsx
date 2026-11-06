@@ -62,7 +62,7 @@ function ArrowRightIcon(props: IconProps) {
 
 const capabilities = [
   "Projects that group related notes",
-  "Sections you can reorder",
+  "Rich text you can style",
   "Tags and filters that work",
   "Private, password-protected accounts",
 ];
@@ -75,7 +75,7 @@ const features: {
   {
     title: "Notes with real structure",
     description:
-      "Write in focused sections instead of one endless page. Reorder the parts as your thinking changes.",
+      "Write with bold, emphasis, headings, lists, and font sizes. Your notes stay readable instead of one endless block.",
     icon: LayersIcon,
   },
   {
@@ -107,9 +107,9 @@ const steps = [
   },
   {
     number: "03",
-    title: "Write and find it later",
+    title: "Write, format, and find it later",
     description:
-      "Break notes into sections, tag them, and filter your list when you need something.",
+      "Style your notes, tag them, and filter your list when you need something.",
   },
 ];
 
@@ -186,7 +186,8 @@ export default function Home() {
               </h1>
               <p className="mt-6 max-w-xl text-base leading-7 text-muted sm:text-lg sm:leading-8">
                 noty keeps every idea, draft, and reference in one calm place —
-                sorted by project and section, tagged so you can find it later.
+                organized by project, styled with rich text, and tagged so you
+                can find it later.
               </p>
 
               <div className="mt-8 flex flex-col gap-3 sm:flex-row">

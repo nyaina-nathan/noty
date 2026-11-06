@@ -3,7 +3,7 @@ import { NoteDetailView } from "@/components/dashboard/note-detail-view";
 
 export const metadata: Metadata = {
   title: "Note — noty",
-  description: "Read and edit a note section by section.",
+  description: "Read and edit a note with rich-text formatting.",
 };
 
 /** The note is loaded in the browser, so this route is allowed to block. */

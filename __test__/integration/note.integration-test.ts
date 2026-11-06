@@ -7,9 +7,11 @@ import {
   inject,
   it,
 } from "vitest";
-import type { PrismaClient } from "@/prisma/generated/client";
+import type { Prisma, PrismaClient } from "@/prisma/generated/client";
 import { ACCESS_TOKEN_COOKIE } from "@/lib/auth-cookies";
 import { signAccessToken } from "@/lib/jwt";
+import { EMPTY_NOTE_DOCUMENT, noteDocumentToText } from "@/lib/note-content";
+import type { NoteDocument } from "@/types/note.types";
 import { callRoute, jsonRequest } from "./helpers/auth";
 
 interface NoteBody {
@@ -21,17 +23,8 @@ interface NoteBody {
   updated_at: string | null;
 }
 
-interface NoteSectionBody {
-  id: string;
-  note_id: string;
-  note_order: number | null;
-  content: string | null;
-  created_at: string | null;
-  updated_at: string | null;
-}
-
 interface NoteDetailBody extends NoteBody {
-  sections: NoteSectionBody[];
+  content: NoteDocument;
 }
 
 interface NoteListBody {
@@ -56,18 +49,34 @@ interface SeedNote {
   title: string;
   description?: string | null;
   project_id?: string | null;
+  content?: NoteDocument;
   created_at?: Date;
   updated_at?: Date | null;
-}
-
-interface SeedSection {
-  content: string | null;
-  note_order?: number;
 }
 
 const JWT_SECRET = "integration-test-jwt-secret-0123456789abcdef";
 const MISSING_NOTE_ID = "11111111-1111-1111-1111-111111111111";
 const MISSING_PROJECT_ID = "22222222-2222-2222-2222-222222222222";
+
+const content: NoteDocument = {
+  type: "doc",
+  content: [
+    {
+      type: "paragraph",
+      content: [
+        { type: "text", text: "Hello " },
+        {
+          type: "text",
+          text: "world",
+          marks: [
+            { type: "bold" },
+            { type: "textStyle", attrs: { fontSize: "18px" } },
+          ],
+        },
+      ],
+    },
+  ],
+};
 
 let prisma: PrismaClient;
 let routes: {
@@ -115,13 +124,17 @@ async function seedProject(
 
 async function seedNotes(userId: string, notes: SeedNote[]) {
   return Promise.all(
-    notes.map((note) =>
-      prisma.notes.create({
+    notes.map((note) => {
+      const noteContent = note.content ?? EMPTY_NOTE_DOCUMENT;
+
+      return prisma.notes.create({
         data: {
           user_id: userId,
           title: note.title,
           description: note.description ?? null,
           project_id: note.project_id ?? null,
+          content_json: noteContent as unknown as Prisma.InputJsonValue,
+          content_text: noteDocumentToText(noteContent),
           ...(note.created_at !== undefined
             ? { created_at: note.created_at }
             : {}),
@@ -129,22 +142,8 @@ async function seedNotes(userId: string, notes: SeedNote[]) {
             ? { updated_at: note.updated_at }
             : {}),
         },
-      }),
-    ),
-  );
-}
-
-async function seedSections(noteId: string, sections: SeedSection[]) {
-  return Promise.all(
-    sections.map((section, index) =>
-      prisma.note_section.create({
-        data: {
-          note_id: noteId,
-          content: section.content,
-          note_order: section.note_order ?? index + 1,
-        },
-      }),
-    ),
+      });
+    }),
   );
 }
 
@@ -357,7 +356,7 @@ describe("GET /api/notes", () => {
     ]);
   });
 
-  it("searches titles and descriptions case-insensitively as a substring", async () => {
+  it("searches titles, descriptions and body text case-insensitively as a substring", async () => {
     const { user, accessToken } = await createUser("alice");
     await seedNotes(user.id, [
       {
@@ -373,6 +372,15 @@ describe("GET /api/notes", () => {
       {
         title: "Personal",
         description: "Ideas",
+        content: {
+          type: "doc",
+          content: [
+            {
+              type: "paragraph",
+              content: [{ type: "text", text: "SHOPPING list" }],
+            },
+          ],
+        },
         created_at: new Date("2026-01-03T00:00:00.000Z"),
       },
     ]);
@@ -382,10 +390,11 @@ describe("GET /api/notes", () => {
 
     const body = await readJson<NoteListBody>(response);
     expect(body.items.map((item) => item.title)).toEqual([
+      "Personal",
       "Meeting",
       "Shopping",
     ]);
-    expect(body.meta.total).toBe(2);
+    expect(body.meta.total).toBe(3);
   });
 
   it("filters notes by project id", async () => {
@@ -504,7 +513,7 @@ describe("POST /api/notes", () => {
     expect(await readError(response)).toMatchObject({ code: "UNAUTHORIZED" });
   });
 
-  it("creates a note with null optional fields and no sections", async () => {
+  it("creates a note with null optional fields and an empty document", async () => {
     const { user, accessToken } = await createUser("alice");
 
     const response = await createNoteRequest(accessToken, {
@@ -521,7 +530,7 @@ describe("POST /api/notes", () => {
       description: null,
       created_at: expect.any(String),
       updated_at: null,
-      sections: [],
+      content: EMPTY_NOTE_DOCUMENT,
     });
 
     const stored = await prisma.notes.findUnique({ where: { id: body.id } });
@@ -530,6 +539,8 @@ describe("POST /api/notes", () => {
       title: "Shopping",
       description: null,
       project_id: null,
+      content_json: EMPTY_NOTE_DOCUMENT,
+      content_text: "",
     });
   });
 
@@ -550,7 +561,7 @@ describe("POST /api/notes", () => {
       title: "Shopping",
       description: "Weekly groceries",
       project_id: project.id,
-      sections: [],
+      content: EMPTY_NOTE_DOCUMENT,
     });
   });
 
@@ -567,34 +578,21 @@ describe("POST /api/notes", () => {
     });
   });
 
-  it("creates the note with its sections in order", async () => {
+  it("creates a note with its rich-text content", async () => {
     const { accessToken } = await createUser("alice");
 
     const response = await createNoteRequest(accessToken, {
-      body: {
-        title: "Shopping",
-        sections: [
-          { content: "Milk" },
-          { content: "Bread", note_order: 5 },
-          { content: null },
-        ],
-      },
+      body: { title: "Shopping", content },
     });
 
     expect(response.status).toBe(201);
 
     const body = await readJson<NoteDetailBody>(response);
-    expect(body.sections.map((section) => section.note_order)).toEqual([
-      1, 3, 5,
-    ]);
-    expect(body.sections.map((section) => section.content)).toEqual([
-      "Milk",
-      null,
-      "Bread",
-    ]);
-    expect(body.sections.every((section) => section.note_id === body.id)).toBe(
-      true,
-    );
+    expect(body.content).toEqual(content);
+
+    const stored = await prisma.notes.findUnique({ where: { id: body.id } });
+    expect(stored?.content_json).toEqual(content);
+    expect(stored?.content_text).toBe("Hello world");
   });
 
   it("rejects a project owned by another user", async () => {
@@ -650,29 +648,35 @@ describe("POST /api/notes", () => {
       "Must be a valid UUID",
     ],
     [
-      { title: "Shopping", sections: "nope" },
-      "sections",
-      "Must be an array",
-    ],
-    [
-      { title: "Shopping", sections: ["Milk"] },
-      "sections[0]",
+      { title: "Shopping", content: "nope" },
+      "content",
       "Must be an object",
     ],
     [
-      { title: "Shopping", sections: [{ content: 42 }] },
-      "sections[0].content",
-      "Must be a string or null",
+      { title: "Shopping", content: { type: "paragraph", content: [] } },
+      "content.type",
+      'Must be "doc"',
     ],
     [
-      { title: "Shopping", sections: [{ note_order: 0 }] },
-      "sections[0].note_order",
-      "Must be a positive integer",
+      { title: "Shopping", content: { type: "doc", content: "nope" } },
+      "content.content",
+      "Must be an array",
     ],
     [
-      { title: "Shopping", sections: [{ content: "Milk", note_id: MISSING_NOTE_ID }] },
-      "note_id",
-      "Unknown field",
+      {
+        title: "Shopping",
+        content: { type: "doc", content: [{ type: "text" }] },
+      },
+      "content.content[0].text",
+      "Is required for text nodes",
+    ],
+    [
+      {
+        title: "Shopping",
+        content: { type: "doc", content: [{ type: "text", text: 42 }] },
+      },
+      "content.content[0].text",
+      "Must be a string",
     ],
     [{ title: "Shopping", user_id: MISSING_NOTE_ID }, "user_id", "Unknown field"],
   ])("rejects the invalid body %j", async (body, field, message) => {
@@ -712,7 +716,7 @@ describe("GET /api/notes/{noteId}", () => {
     expect(await readError(response)).toMatchObject({ code: "UNAUTHORIZED" });
   });
 
-  it("returns a note with its sections ordered by note_order", async () => {
+  it("returns a note with its content", async () => {
     const { user, accessToken } = await createUser("alice");
     const project = await seedProject(user.id, { title: "Home" });
     const [note] = await seedNotes(user.id, [
@@ -720,13 +724,8 @@ describe("GET /api/notes/{noteId}", () => {
         title: "Shopping",
         description: "Weekly groceries",
         project_id: project.id,
+        content,
       },
-    ]);
-
-    await seedSections(note.id, [
-      { content: "Third", note_order: 3 },
-      { content: "First", note_order: 1 },
-      { content: "Second", note_order: 2 },
     ]);
 
     const response = await getNoteRequest(accessToken, note.id);
@@ -739,15 +738,11 @@ describe("GET /api/notes/{noteId}", () => {
       project_id: project.id,
       title: "Shopping",
       description: "Weekly groceries",
+      content,
     });
-    expect(body.sections.map((section) => section.content)).toEqual([
-      "First",
-      "Second",
-      "Third",
-    ]);
   });
 
-  it("returns an empty sections array", async () => {
+  it("returns an empty document", async () => {
     const { user, accessToken } = await createUser("alice");
     const [note] = await seedNotes(user.id, [{ title: "Shopping" }]);
 
@@ -755,7 +750,7 @@ describe("GET /api/notes/{noteId}", () => {
 
     expect(response.status).toBe(200);
     expect(await readJson<NoteDetailBody>(response)).toMatchObject({
-      sections: [],
+      content: EMPTY_NOTE_DOCUMENT,
     });
   });
 
@@ -811,6 +806,7 @@ describe("PATCH /api/notes/{noteId}", () => {
         title: "Shopping",
         description: "Plan",
         project_id: project.id,
+        content,
       },
     ]);
 
@@ -819,14 +815,14 @@ describe("PATCH /api/notes/{noteId}", () => {
     });
 
     expect(response.status).toBe(200);
-    const body = await readJson<NoteBody>(response);
+    const body = await readJson<NoteDetailBody>(response);
     expect(body).toMatchObject({
       id: note.id,
       title: "Groceries",
       description: "Plan",
       project_id: project.id,
+      content,
     });
-    expect(body).not.toHaveProperty("sections");
   });
 
   it("refreshes updated_at", async () => {
@@ -842,7 +838,7 @@ describe("PATCH /api/notes/{noteId}", () => {
 
     expect(response.status).toBe(200);
 
-    const body = await readJson<NoteBody>(response);
+    const body = await readJson<NoteDetailBody>(response);
     expect(body.updated_at).not.toBeNull();
     expect(new Date(body.updated_at as string).getTime()).toBeGreaterThan(
       oldUpdatedAt.getTime(),
@@ -863,7 +859,7 @@ describe("PATCH /api/notes/{noteId}", () => {
     });
 
     expect(response.status).toBe(200);
-    expect(await readJson<NoteBody>(response)).toMatchObject({
+    expect(await readJson<NoteDetailBody>(response)).toMatchObject({
       description: "Updated plan",
     });
   });
@@ -879,12 +875,30 @@ describe("PATCH /api/notes/{noteId}", () => {
     });
 
     expect(response.status).toBe(200);
-    expect(await readJson<NoteBody>(response)).toMatchObject({
+    expect(await readJson<NoteDetailBody>(response)).toMatchObject({
       description: null,
     });
 
     const stored = await prisma.notes.findUnique({ where: { id: note.id } });
     expect(stored?.description).toBeNull();
+  });
+
+  it("replaces the content and its derived plain text", async () => {
+    const { user, accessToken } = await createUser("alice");
+    const [note] = await seedNotes(user.id, [{ title: "Shopping" }]);
+
+    const response = await updateNoteRequest(accessToken, note.id, {
+      body: { content },
+    });
+
+    expect(response.status).toBe(200);
+    expect(await readJson<NoteDetailBody>(response)).toMatchObject({
+      content,
+    });
+
+    const stored = await prisma.notes.findUnique({ where: { id: note.id } });
+    expect(stored?.content_json).toEqual(content);
+    expect(stored?.content_text).toBe("Hello world");
   });
 
   it("attaches a project owned by the user", async () => {
@@ -897,7 +911,7 @@ describe("PATCH /api/notes/{noteId}", () => {
     });
 
     expect(response.status).toBe(200);
-    expect(await readJson<NoteBody>(response)).toMatchObject({
+    expect(await readJson<NoteDetailBody>(response)).toMatchObject({
       project_id: project.id,
     });
   });
@@ -914,7 +928,7 @@ describe("PATCH /api/notes/{noteId}", () => {
     });
 
     expect(response.status).toBe(200);
-    expect(await readJson<NoteBody>(response)).toMatchObject({
+    expect(await readJson<NoteDetailBody>(response)).toMatchObject({
       project_id: null,
     });
   });
@@ -989,6 +1003,12 @@ describe("PATCH /api/notes/{noteId}", () => {
       "Must be a string or null",
     ],
     [{ project_id: "not-a-uuid" }, "project_id", "Must be a valid UUID"],
+    [{ content: null }, "content", "Must be an object"],
+    [
+      { content: { type: "doc", content: [{ type: "text" }] } },
+      "content.content[0].text",
+      "Is required for text nodes",
+    ],
     [
       { title: "Groceries", sections: [{ content: "Milk" }] },
       "sections",
@@ -1055,19 +1075,6 @@ describe("DELETE /api/notes/{noteId}", () => {
     expect(await prisma.notes.findUnique({ where: { id: note.id } })).toBeNull();
   });
 
-  it("cascades to the note's sections", async () => {
-    const { user, accessToken } = await createUser("alice");
-    const [note] = await seedNotes(user.id, [{ title: "Shopping" }]);
-    await seedSections(note.id, [{ content: "Milk" }, { content: "Bread" }]);
-
-    const response = await deleteNoteRequest(accessToken, note.id);
-
-    expect(response.status).toBe(204);
-    expect(
-      await prisma.note_section.count({ where: { note_id: note.id } }),
-    ).toBe(0);
-  });
-
   it("keeps the project the note was attached to", async () => {
     const { user, accessToken } = await createUser("alice");
     const project = await seedProject(user.id, { title: "Home" });
@@ -1123,17 +1130,17 @@ describe("notes CRUD flow", () => {
         title: "Shopping",
         description: "Weekly groceries",
         project_id: project.id,
-        sections: [{ content: "Milk" }, { content: "Bread" }],
+        content,
       },
     });
     expect(createResponse.status).toBe(201);
     const created = await readJson<NoteDetailBody>(createResponse);
-    expect(created.sections).toHaveLength(2);
+    expect(created.content).toEqual(content);
 
     const listResponse = await listNotesRequest(accessToken);
     const list = await readJson<NoteListBody>(listResponse);
     expect(list.items).toHaveLength(1);
-    expect(list.items[0]).not.toHaveProperty("sections");
+    expect(list.items[0]).not.toHaveProperty("content");
     expect(list.items[0]).toMatchObject({ id: created.id, title: "Shopping" });
 
     const getResponse = await getNoteRequest(accessToken, created.id);
@@ -1144,12 +1151,13 @@ describe("notes CRUD flow", () => {
       body: { title: "Groceries", project_id: null, description: null },
     });
     expect(updateResponse.status).toBe(200);
-    const updated = await readJson<NoteBody>(updateResponse);
+    const updated = await readJson<NoteDetailBody>(updateResponse);
     expect(updated).toMatchObject({
       id: created.id,
       title: "Groceries",
       description: null,
       project_id: null,
+      content,
     });
 
     const deleteResponse = await deleteNoteRequest(accessToken, created.id);
@@ -1157,9 +1165,5 @@ describe("notes CRUD flow", () => {
 
     const missingResponse = await getNoteRequest(accessToken, created.id);
     expect(missingResponse.status).toBe(404);
-
-    expect(
-      await prisma.note_section.count({ where: { note_id: created.id } }),
-    ).toBe(0);
   });
 });

@@ -390,7 +390,7 @@ export function NotesView() {
       {pendingDelete ? (
         <ConfirmDialog
           title="Delete this note?"
-          description={`“${pendingDelete.title}” and all of its sections will be deleted. This cannot be undone.`}
+          description={`“${pendingDelete.title}” will be deleted. This cannot be undone.`}
           confirmLabel="Delete note"
           pending={deleting}
           error={deleteError}

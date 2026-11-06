@@ -324,7 +324,7 @@ export function ProjectDetailView({ projectId }: { projectId: string }) {
             </h2>
             <p className="mt-1 text-sm text-muted">
               Every note in this project. Open one to read and edit its
-              sections.
+              content.
             </p>
           </div>
 
@@ -380,7 +380,7 @@ export function ProjectDetailView({ projectId }: { projectId: string }) {
             description={
               filtered
                 ? "Try a different search, or clear it to see every note in this project."
-                : "Add the first note to this project, then write it section by section."
+                : "Add the first note to this project, then start writing in rich text."
             }
             action={
               filtered ? (
@@ -512,7 +512,7 @@ export function ProjectDetailView({ projectId }: { projectId: string }) {
       {pendingNoteDelete ? (
         <ConfirmDialog
           title="Delete this note?"
-          description={`“${pendingNoteDelete.title}” and all of its sections will be deleted. This cannot be undone.`}
+          description={`“${pendingNoteDelete.title}” will be deleted. This cannot be undone.`}
           confirmLabel="Delete note"
           pending={deletingNote}
           error={noteDeleteError}
